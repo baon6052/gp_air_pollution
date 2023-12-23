@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 
 import geopandas as gpd
+import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import pytz
@@ -10,24 +11,23 @@ from shapely.geometry import MultiPoint, Point
 TIME = f"{datetime(2023, 12, 1, 17)}"
 
 
-def get_air_pollutant_level(latitude: float, longitude: float):
+def get_air_pollutant_level(coords: np.ndarray) -> np.ndarray:
     """
     (latitude, long) -> pollutant level for time
     """
-
-    point = Point(latitude, longitude)
+    point = Point(coords[0], coords[1])
     df = get_air_pollution_data(point)
-    return df[df["datetime"] == TIME]["pm2_5"]
+    return np.expand_dims(df[df["datetime"] == TIME]["pm2_5"].values, axis=1)
 
 
 def get_batch_air_pollutant_levels(coordinates: npt.ArrayLike) -> npt.ArrayLike:
     air_pollutant_levels = []
 
-    for longitude, lattitude in coordinates:
-        air_pollutant_level = get_air_pollutant_level(longitude, lattitude)
+    for coord in coordinates:
+        air_pollutant_level = get_air_pollutant_level(coord)
         air_pollutant_levels.append(air_pollutant_level)
 
-    return air_pollutant_levels
+    return np.squeeze(np.array(air_pollutant_levels), axis=1)
 
 
 def convert_multipoint_to_point(multipoint: MultiPoint):
@@ -40,7 +40,7 @@ def convert_multipoint_to_point(multipoint: MultiPoint):
 
 
 def local_to_utc(
-    local_datetime, local_timezone="Europe/London", timestamp=True
+        local_datetime, local_timezone="Europe/London", timestamp=True
 ):
     """
     Convert a local timezone datetime into a UTC timestamp.
@@ -70,7 +70,7 @@ def local_to_utc(
 
 
 def utc_to_local(
-    utc_timestamp, local_timezone="Europe/London", timestamp=True
+        utc_timestamp, local_timezone="Europe/London", timestamp=True
 ) -> int | datetime:
     """
     Convert a UTC timestamp to a local time datetime object.
@@ -99,7 +99,7 @@ def utc_to_local(
 
 def get_air_pollution_data(geometry: Point) -> pd.DataFrame:
     latitude, longitude = geometry.coords[0]
-    API_KEY = "bb349d533dd3649c1eea135d4aafebfc"
+    API_KEY = "84bec9a1ca5c364023b8e490b7fc3547"
     base_url = "http://api.openweathermap.org/data/2.5/air_pollution/history"
     local_timezone = "Europe/London"
 
