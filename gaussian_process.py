@@ -1,18 +1,19 @@
 from pathlib import Path
 
+import click
 import GPy
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
-from GPy.models import GPRegression
 from emukit.core import ContinuousParameter, ParameterSpace
 from emukit.core.initial_designs.latin_design import LatinDesign
 from emukit.core.interfaces import IModel
 from emukit.experimental_design import ExperimentalDesignLoop
 from emukit.experimental_design.acquisitions import ModelVariance
 from emukit.model_wrappers import GPyModelWrapper
+from GPy.models import GPRegression
 
 from dataset import get_air_pollutant_level, get_batch_air_pollutant_levels
 
@@ -23,22 +24,16 @@ OUTPUTS_DIR = Path(DATA_DIR, "outputs")
 
 
 def get_model(train_x: npt.ArrayLike, train_y: npt.ArrayLike):
-    kernel = GPy.kern.Matern52(2)
+    kernel = GPy.kern.Matern52(train_x.shape[1])
     model_gpy = GPRegression(train_x, train_y, kernel)
     return GPyModelWrapper(model_gpy)
 
 
-def get_parameter_space(
-        longitude_bounds: tuple[float, float], latitude_bounds: tuple[float, float]
-):
+def get_parameter_space(input_bounds: dict[str, tuple[float, float]]):
     return ParameterSpace(
         [
-            ContinuousParameter(
-                "latitude", latitude_bounds[0], latitude_bounds[1]
-            ),
-            ContinuousParameter(
-                "longitude", longitude_bounds[0], longitude_bounds[1]
-            ),
+            ContinuousParameter(name, min_bound, max_bound)
+            for name, (min_bound, max_bound) in input_bounds.items()
         ]
     )
 
@@ -48,11 +43,11 @@ def read_sample_locations_air_pollution(path) -> pd.DataFrame:
 
 
 def run_bayes_optimization(
-        model: IModel,
-        parameter_space: ParameterSpace,
-        acquisition_func: ModelVariance,
-        batch_size=1,
-        max_iterations: int = 30,
+    model: IModel,
+    parameter_space: ParameterSpace,
+    acquisition_func: ModelVariance,
+    batch_size=1,
+    max_iterations: int = 30,
 ):
     expdesign_loop = ExperimentalDesignLoop(
         model=model,
@@ -61,35 +56,56 @@ def run_bayes_optimization(
         batch_size=batch_size,
     )
 
-    expdesign_loop.run_loop(lambda x: get_air_pollutant_level(x[0]), max_iterations)
+    expdesign_loop.run_loop(
+        lambda x: get_air_pollutant_level(x[0]), max_iterations
+    )
     return expdesign_loop
 
 
-def plot_results(model: IModel, observations: np.ndarray,
-                 bounds: dict[str, tuple[float, float]]):
-    lats = np.linspace(bounds["latitude"][0], bounds["latitude"][1], 1_000)
-    longs = np.linspace(bounds["longitude"][0], bounds["longitude"][1], 1_000)
-    X, Y = np.meshgrid(longs, lats)
-    coords = np.column_stack([Y.ravel(), X.ravel()])
-    mean, uncertainty = model.predict(coords)
-    mean = mean.reshape((1_000, 1_000))
-    uncertainty = uncertainty.reshape((1_000, 1_000))
-    fig, (ax1, ax2) = plt.subplots(ncols=2, nrows=1, figsize=(12, 6), constrained_layout=True)
+def plot_results(
+    model: IModel,
+    observations: np.ndarray,
+    bounds: dict[str, tuple[float, float]],
+):
+    linear_spaces = []
+    num_samples = 1000
+    for name, (min_bound, max_bound) in bounds.items():
+        linear_spaces.append(
+            np.linspace(start=min_bound, stop=max_bound, num=num_samples)
+        )
+
+    # latitude_linear_space = linear_spaces.append(np.linspace(start=bounds["latitude"][0], stop=bounds["latitude"][1], num=num_samples))
+    # longitude_linear_space = linear_spaces.append(np.linspace(start=bounds["longitude"][0], stop=bounds["latitude"][1], num=num_samples))
+
+    meshgrid = np.meshgrid(*linear_spaces)
+    model_inputs = np.column_stack(
+        [meshgrid_dimension.ravel() for meshgrid_dimension in meshgrid]
+    )
+
+    mean, uncertainty = model.predict(model_inputs)
+    reshape_parameters = tuple([num_samples] * len(bounds))
+    mean = mean.reshape(reshape_parameters)
+    uncertainty = uncertainty.reshape(reshape_parameters)
+
+    fig, (ax1, ax2) = plt.subplots(
+        ncols=2, nrows=1, figsize=(12, 6), constrained_layout=True
+    )
     ax1.set_title("Mean PM2.5 Concentrations")
     ax1.set_xlabel("Longitude")
     ax1.set_ylabel("Latitude")
-    cs1 = ax1.contourf(X, Y, mean)
+    cs1 = ax1.contourf(meshgrid[0][:, :], meshgrid[1][:, :], mean[:, :])
     ax1.scatter(observations[:, 1], observations[:, 0], c="red", marker="o")
     plt.colorbar(cs1, ax=ax1)
 
     ax2.set_title("Uncertainty in estimation")
     ax2.set_xlabel("Longitude")
     ax2.set_ylabel("Latitude")
-    cs2 = ax2.contourf(X, Y, uncertainty)
+    cs2 = ax2.contourf(meshgrid[0][:, :], meshgrid[1][:, :], uncertainty[:, :])
     ax2.scatter(observations[:, 1], observations[:, 0], c="red", marker="o")
     plt.colorbar(cs2, ax=ax2)
     fig.suptitle("Simple Gaussian Process Model for PM2.5 Concentrations")
     fig.savefig("gaussian_process.png")
+    plt.show()
 
 
 def run_basic_gp_regression(sample_locations_air_pollution_df: pd.DataFrame):
@@ -99,7 +115,7 @@ def run_basic_gp_regression(sample_locations_air_pollution_df: pd.DataFrame):
     filtered_df = sample_locations_air_pollution_df[
         sample_locations_air_pollution_df["datetime"]
         == "2023-12-01 17:00:00+00:00"
-        ]
+    ]
     train_x = filtered_df[["latitude", "longitude"]].to_numpy()
     train_y = np.expand_dims(filtered_df["pm2_5"].to_numpy(), axis=1)
 
@@ -112,20 +128,30 @@ def run_basic_gp_regression(sample_locations_air_pollution_df: pd.DataFrame):
     dataplot.figure.savefig("model.png")
 
 
-def main():
+def process_items(ctx, param, value):
+    if value:
+        items = value.split(",")
+        items = [item.strip() for item in items]
+        return items
+
+
+@click.command()
+@click.option(
+    "--input_parameters", callback=process_items, default="longitude, latitude"
+)
+def main(input_parameters):
     sample_locations_air_pollution_df = read_sample_locations_air_pollution(
         Path(INPUTS_DIR, "air_pollution_per_lat_lng.csv")
     )
-    latitude_bounds = (
-        sample_locations_air_pollution_df.latitude.min(),
-        sample_locations_air_pollution_df.latitude.max(),
-    )
-    longitude_bounds = (
-        sample_locations_air_pollution_df.longitude.min(),
-        sample_locations_air_pollution_df.longitude.max(),
-    )
+    bounds = {}
+    for parameter in input_parameters:
+        min_bound = sample_locations_air_pollution_df.get(parameter).min()
+        max_bound = sample_locations_air_pollution_df.get(parameter).max()
 
-    parameter_space = get_parameter_space(longitude_bounds, latitude_bounds)
+        bounds[parameter] = (min_bound, max_bound)
+
+    parameter_space = get_parameter_space(bounds)
+
     design = LatinDesign(parameter_space)
 
     initial_num_data_points = 5
@@ -136,10 +162,7 @@ def main():
     acquisition_func = ModelVariance(model=model)
 
     results = run_bayes_optimization(model, parameter_space, acquisition_func)
-    plot_results(results.model, results.loop_state.X, {
-        "latitude": latitude_bounds,
-        "longitude": longitude_bounds
-    })
+    plot_results(results.model, results.loop_state.X, bounds)
 
 
 if __name__ == "__main__":
