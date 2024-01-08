@@ -24,7 +24,8 @@ OUTPUTS_DIR = Path(DATA_DIR, "outputs")
 
 
 def get_model(train_x: npt.ArrayLike, train_y: npt.ArrayLike):
-    kernel = GPy.kern.Matern52(train_x.shape[1])
+    num_input_parameters = train_x.shape[1]
+    kernel = GPy.kern.Matern52(num_input_parameters)
     model_gpy = GPRegression(train_x, train_y, kernel)
     return GPyModelWrapper(model_gpy)
 
@@ -68,14 +69,11 @@ def plot_results(
     bounds: dict[str, tuple[float, float]],
 ):
     linear_spaces = []
-    num_samples = 1000
+    num_samples = 50
     for name, (min_bound, max_bound) in bounds.items():
         linear_spaces.append(
             np.linspace(start=min_bound, stop=max_bound, num=num_samples)
         )
-
-    # latitude_linear_space = linear_spaces.append(np.linspace(start=bounds["latitude"][0], stop=bounds["latitude"][1], num=num_samples))
-    # longitude_linear_space = linear_spaces.append(np.linspace(start=bounds["longitude"][0], stop=bounds["latitude"][1], num=num_samples))
 
     meshgrid = np.meshgrid(*linear_spaces)
     model_inputs = np.column_stack(
@@ -93,15 +91,15 @@ def plot_results(
     ax1.set_title("Mean PM2.5 Concentrations")
     ax1.set_xlabel("Longitude")
     ax1.set_ylabel("Latitude")
-    cs1 = ax1.contourf(meshgrid[0][:, :], meshgrid[1][:, :], mean[:, :])
-    ax1.scatter(observations[:, 1], observations[:, 0], c="red", marker="o")
+    cs1 = ax1.contourf(meshgrid[0], meshgrid[1], mean)
+    ax1.scatter(observations[:, 0], observations[:, 1], c="red", marker="o")
     plt.colorbar(cs1, ax=ax1)
 
     ax2.set_title("Uncertainty in estimation")
     ax2.set_xlabel("Longitude")
     ax2.set_ylabel("Latitude")
-    cs2 = ax2.contourf(meshgrid[0][:, :], meshgrid[1][:, :], uncertainty[:, :])
-    ax2.scatter(observations[:, 1], observations[:, 0], c="red", marker="o")
+    cs2 = ax2.contourf(meshgrid[0], meshgrid[1], uncertainty)
+    ax2.scatter(observations[:, 0], observations[:, 1], c="red", marker="o")
     plt.colorbar(cs2, ax=ax2)
     fig.suptitle("Simple Gaussian Process Model for PM2.5 Concentrations")
     fig.savefig("gaussian_process.png")
