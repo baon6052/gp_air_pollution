@@ -11,15 +11,6 @@ from shapely.geometry import MultiPoint, Point
 TIME = f"{datetime(2023, 12, 1, 17)}"
 
 
-def get_air_pollutant_level(coords: np.ndarray) -> np.ndarray:
-    """
-    (latitude, long) -> pollutant level for time
-    """
-    point = Point(coords[0], coords[1])
-    df = get_air_pollution_data(point)
-    return np.expand_dims(df[df["datetime"] == TIME]["pm2_5"].values, axis=1)
-
-
 def get_batch_air_pollutant_levels(coordinates: npt.ArrayLike) -> npt.ArrayLike:
     air_pollutant_levels = []
 
@@ -40,7 +31,7 @@ def convert_multipoint_to_point(multipoint: MultiPoint):
 
 
 def local_to_utc(
-        local_datetime, local_timezone="Europe/London", timestamp=True
+    local_datetime, local_timezone="Europe/London", timestamp=True
 ):
     """
     Convert a local timezone datetime into a UTC timestamp.
@@ -70,7 +61,7 @@ def local_to_utc(
 
 
 def utc_to_local(
-        utc_timestamp, local_timezone="Europe/London", timestamp=True
+    utc_timestamp, local_timezone="Europe/London", timestamp=True
 ) -> int | datetime:
     """
     Convert a UTC timestamp to a local time datetime object.
@@ -95,6 +86,26 @@ def utc_to_local(
         return int(local_datetime.timestamp())
     else:
         return local_datetime
+
+
+def get_climate_data(longitude_coordinate: float, latitude_coordinate: float):
+    API_KEY = "84bec9a1ca5c364023b8e490b7fc3547"
+    base_url = "http://api.openweathermap.org/data/2.5/air_pollution/history"
+    local_timezone = "Europe/London"
+
+    start_date = datetime(2023, 12, 1)
+    end_date = start_date + timedelta(days=1)
+
+    dfs = []
+
+    current_date = start_date
+    while current_date < end_date:
+        start_timestamp = local_to_utc(current_date)
+        end_timestamp = local_to_utc(current_date + timedelta(days=1))
+
+        response = requests.get(
+            f"{base_url}?lat={latitude_coordinate}&lon={longitude_coordinate}&start={start_timestamp}&end={end_timestamp}&appid={API_KEY}"
+        )
 
 
 def get_air_pollution_data(geometry: Point) -> pd.DataFrame:
@@ -156,3 +167,37 @@ def get_data_openweathermap(path):
         lambda row: get_air_pollution_data(row["geometry"]), axis=1
     ).to_list()
     large_df = pd.concat(list_of_dfs, ignore_index=True)
+
+
+def extend_train_data(
+    coordinates: np.ndarray, climate_variables: list[str]
+) -> np.ndarray:
+    if not climate_variables:
+        return coordinates
+
+    train_data = []
+    for longitude_coordinate, latitude_coordinate in coordinates:
+        point = Point(longitude_coordinate, latitude_coordinate)
+        df = get_air_pollution_data(point)
+        climate_variable_values = [longitude_coordinate, latitude_coordinate]
+        for climate_variable in climate_variables:
+            climate_variable_values.append(
+                df[df["datetime"] == TIME][climate_variable].values[0]
+            )
+
+        train_data.append(climate_variable_values)
+
+    return np.array(train_data)
+
+
+def get_air_pollutant_level(coords: np.ndarray) -> np.ndarray:
+    """
+    (latitude, long) -> pollutant level for time
+    """
+    point = Point(coords[0], coords[1])
+    df = get_air_pollution_data(point)
+    return np.expand_dims(df[df["datetime"] == TIME]["pm2_5"].values, axis=1)
+
+
+# if __name__ == "__main__":
+#     extend_train_data(np.array([[51.52728104, -0.24752401]]), ["co"])
