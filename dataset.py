@@ -10,10 +10,14 @@ import pandas as pd
 import pytz
 import requests
 from shapely.geometry import MultiPoint, Point
-from gaussian_process import INPUTS_DIR
+
+CWD = Path.cwd()
+DATA_DIR = Path(CWD, "data")
+OUTPUTS_DIR = Path(DATA_DIR, "outputs")
+API_KEY = os.environ["API_KEY"]
+INPUTS_DIR = Path(DATA_DIR, "inputs")
 
 TIME = datetime(2023, 12, 1, 17)
-API_KEY = os.environ["API_KEY"]
 CLIMATE_VARS = [
     "temp",
     "feels_like",
@@ -208,11 +212,13 @@ def get_air_pollutant_level(coords: np.ndarray) -> np.ndarray:
     """
     point = Point(coords[0], coords[1])
     df = get_air_pollution_data(point)
-    return np.expand_dims(df[df["datetime"] == TIME]["pm2_5"].values, axis=1)
+    return np.expand_dims(df[df["datetime"] == str(TIME)]["pm2_5"].values, axis=1)
 
 
-def get_cached_openweather_data(num_samples: int | None = None) -> np.array:
+def get_cached_openweather_data(num_samples: int | None = None, climate_variables: list[str] = []) -> np.array:
     cached_data = []
+    columns = ["longitude", "latitude"]
+    columns.extend(climate_variables)
 
     with open("data/cached_openweather_data.csv", "r", newline="") as csvfile:
         dict_reader = csv.DictReader(csvfile)
@@ -221,8 +227,8 @@ def get_cached_openweather_data(num_samples: int | None = None) -> np.array:
                 if num_samples == 0:
                     break
                 num_samples -= 1
-            cached_data.append(np.array([float(value) for value in row.values()]))
 
+            cached_data.append(np.array([float(value) for key, value in row.items() if key in columns]))
     return np.array(cached_data)
 
 
@@ -323,7 +329,7 @@ if __name__ == "__main__":
         longitude_bounds,
         latitude_bounds,
         climate_variables=CLIMATE_VARS,
-        num_samples=10,
+        num_samples=200,
     )
 
     get_cached_openweather_data()

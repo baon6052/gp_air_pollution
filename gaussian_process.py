@@ -1,6 +1,5 @@
 from pathlib import Path
 from typing import Literal
-import os
 
 import GPy
 import click
@@ -21,15 +20,10 @@ from custom_experimental_design_loop import CustomExperimentalDesignLoop
 from dataset import (
     extend_train_data,
     get_air_pollutant_level,
-    get_batch_air_pollutant_levels,
+    get_batch_air_pollutant_levels, INPUTS_DIR,
 )
 from dataset import get_cached_openweather_data
 
-CWD = Path.cwd()
-DATA_DIR = Path(CWD, "data")
-INPUTS_DIR = Path(DATA_DIR, "inputs")
-OUTPUTS_DIR = Path(DATA_DIR, "outputs")
-API_KEY = os.environ["API_KEY"]
 
 
 def get_model(train_x: npt.ArrayLike, train_y: npt.ArrayLike):
@@ -95,7 +89,7 @@ def plot_results(
 
     if load_from_cache:
         # get meshgrid of num_samples, hence num_samples squared
-        model_inputs = get_cached_openweather_data(num_samples**2)
+        model_inputs = get_cached_openweather_data(num_samples**2, climate_variables=climate_variables)
     else:
         model_inputs = np.column_stack(
             [meshgrid_dimension.ravel() for meshgrid_dimension in meshgrid]
