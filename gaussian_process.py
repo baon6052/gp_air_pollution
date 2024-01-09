@@ -190,7 +190,7 @@ def main(climate_variables):
     bounds["latitude"] = latitude_bounds
 
     parameter_space = get_parameter_space(
-        bounds, climate_variables=climate_variables
+        bounds, climate_variables=[]
     )
 
     design = LatinDesign(parameter_space)
@@ -204,6 +204,10 @@ def main(climate_variables):
 
     model = get_model(train_x=train_x, train_y=train_y)
     acquisition_func = ModelVariance(model=model)
+
+    parameter_space = get_parameter_space(
+        bounds, climate_variables=climate_variables
+    )
 
     results = run_bayes_optimization(
         model,
