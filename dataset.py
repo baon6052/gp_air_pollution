@@ -1,4 +1,7 @@
+from pathlib import Path
 from datetime import datetime, timedelta
+import csv
+import os
 
 import geopandas as gpd
 import numpy as np
@@ -7,8 +10,21 @@ import pandas as pd
 import pytz
 import requests
 from shapely.geometry import MultiPoint, Point
+from gaussian_process import INPUTS_DIR
 
-TIME = f"{datetime(2023, 12, 1, 17)}"
+TIME = datetime(2023, 12, 1, 17)
+API_KEY = os.environ["API_KEY"]
+CLIMATE_VARS = [
+    "temp",
+    "feels_like",
+    "pressure",
+    "humidity",
+    "temp_min",
+    "temp_max",
+    "clouds_all",
+    "wind_deg",
+    "wind_speed",
+]
 
 
 def get_batch_air_pollutant_levels(coordinates: npt.ArrayLike) -> npt.ArrayLike:
@@ -30,9 +46,7 @@ def convert_multipoint_to_point(multipoint: MultiPoint):
     return multipoint
 
 
-def local_to_utc(
-    local_datetime, local_timezone="Europe/London", timestamp=True
-):
+def local_to_utc(local_datetime, local_timezone="Europe/London", timestamp=True):
     """
     Convert a local timezone datetime into a UTC timestamp.
 
@@ -150,15 +164,13 @@ def get_air_pollution_data(geometry: Point) -> pd.DataFrame:
     weekly_df = pd.concat(dfs)
     expanded_df = weekly_df["components"].apply(pd.Series)
     # You can then concatenate these new columns back to your original DataFrame
-    df = pd.concat(
-        [weekly_df.drop(["components"], axis=1), expanded_df], axis=1
-    )
+    df = pd.concat([weekly_df.drop(["components"], axis=1), expanded_df], axis=1)
     df = df.drop(columns=["main"])
     return df
 
 
 def get_data_openweathermap(path):
-    path = Path(INPUTS, "sample_locations.geojson")
+    path = Path(INPUTS_DIR, "sample_locations.geojson")
     sample_locations_gdf = gpd.read_file(path)
     sample_locations_gdf["geometry"] = sample_locations_gdf["geometry"].apply(
         convert_multipoint_to_point
@@ -199,5 +211,119 @@ def get_air_pollutant_level(coords: np.ndarray) -> np.ndarray:
     return np.expand_dims(df[df["datetime"] == TIME]["pm2_5"].values, axis=1)
 
 
-# if __name__ == "__main__":
-#     extend_train_data(np.array([[51.52728104, -0.24752401]]), ["co"])
+def get_cached_openweather_data(num_samples: int | None = None) -> np.array:
+    cached_data = []
+
+    with open("data/cached_openweather_data.csv", "r", newline="") as csvfile:
+        dict_reader = csv.DictReader(csvfile)
+        for row in dict_reader:
+            if num_samples:
+                if num_samples == 0:
+                    break
+                num_samples -= 1
+            cached_data.append(np.array([float(value) for value in row.values()]))
+
+    return np.array(cached_data)
+
+
+def get_climate_data(
+    coordinates: np.array,
+    climate_variables: list[str],
+) -> pd.DataFrame:
+    base_url = "https://history.openweathermap.org/data/2.5/history/city"
+    start_timestamp = int(TIME.timestamp())
+    end_timestamp = int(TIME.timestamp())
+
+    climate_variable_data = {k: [] for k in climate_variables}
+
+    for coord in coordinates:
+        latitude = coord[0]
+        longitude = coord[1]
+        response = requests.get(
+            f"{base_url}?lat={latitude}&lon={longitude}&start={start_timestamp}&end={end_timestamp}&appid={API_KEY}"
+        )
+
+        if response.status_code == 200:
+            data = response.json()["list"][
+                0
+            ]  # will only be one because its for a specific hour I think
+            for climate_var in climate_variables:
+                if climate_var in [
+                    "temp",
+                    "feels_like",
+                    "pressure",
+                    "humidity",
+                    "temp_min",
+                    "temp_max",
+                ]:
+                    climate_variable_data[climate_var].append(data["main"][climate_var])
+                elif "wind" in climate_var:
+                    climate_variable_data[climate_var].append(
+                        data["wind"][climate_var.split("_")[1]]
+                    )
+                elif "clouds" in climate_var:
+                    climate_variable_data[climate_var].append(
+                        data["clouds"][climate_var.split("_")[1]]
+                    )  # only accepts all
+    arrays = [
+        np.array(climate_variable_data[key]) for key in climate_variable_data.keys()
+    ]
+    return np.vstack(arrays).T
+
+
+def setup_cache_data(
+    longitude_bounds: tuple[float, float],
+    latitude_bounds: tuple[float, float],
+    climate_variables: list[str] = [],
+    num_samples: int = 1000,
+):
+    longitude_linear_space = np.linspace(
+        start=longitude_bounds[0], stop=longitude_bounds[1], num=num_samples
+    )
+    latitude_linear_space = np.linspace(
+        start=latitude_bounds[0], stop=latitude_bounds[1], num=num_samples
+    )
+
+    meshgrid = np.meshgrid(longitude_linear_space, latitude_linear_space)
+    coordinates = np.column_stack(
+        [meshgrid_dimension.ravel() for meshgrid_dimension in meshgrid]
+    )
+
+    # Call out to openweather MAP API here with list of coordinates and climate variables
+    climate_variable_data = get_climate_data(
+        coordinates, climate_variables=climate_variables
+    )
+    # After calling, extend coordinate data with climate variable data from API
+    # Then save all to csv below
+
+    with open("data/cached_openweather_data.csv", "w", newline="") as csvfile:
+        fieldnames = ["longitude", "latitude"]
+        fieldnames.extend(climate_variables)
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer.writeheader()
+
+        for (longitude_coordinate, latitude_coordinate), climate_data in zip(
+            coordinates, climate_variable_data
+        ):
+            row_data = {
+                "longitude": longitude_coordinate,
+                "latitude": latitude_coordinate,
+            }
+
+            for i, climate_var in enumerate(climate_variables):
+                row_data[climate_var] = climate_data[i]
+            writer.writerow(row_data)
+
+
+if __name__ == "__main__":
+    longitude_bounds = (51.41728104, 51.56728104)
+    latitude_bounds = (-0.24752401, 0.12247599)
+
+    setup_cache_data(
+        longitude_bounds,
+        latitude_bounds,
+        climate_variables=CLIMATE_VARS,
+        num_samples=10,
+    )
+
+    get_cached_openweather_data()

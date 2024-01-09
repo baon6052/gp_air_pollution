@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import Literal
+import os
 
 import GPy
 import click
@@ -22,11 +23,13 @@ from dataset import (
     get_air_pollutant_level,
     get_batch_air_pollutant_levels,
 )
+from dataset import get_cached_openweather_data
 
 CWD = Path.cwd()
 DATA_DIR = Path(CWD, "data")
 INPUTS_DIR = Path(DATA_DIR, "inputs")
 OUTPUTS_DIR = Path(DATA_DIR, "outputs")
+API_KEY = os.environ["API_KEY"]
 
 
 def get_model(train_x: npt.ArrayLike, train_y: npt.ArrayLike):
@@ -37,16 +40,14 @@ def get_model(train_x: npt.ArrayLike, train_y: npt.ArrayLike):
 
 
 def get_parameter_space(
-        input_bounds: dict[str, tuple[float, float]], climate_variables: list[str]
+    input_bounds: dict[str, tuple[float, float]], climate_variables: list[str]
 ):
     parameter_spaces = [
         ContinuousParameter(name, min_bound, max_bound)
         for name, (min_bound, max_bound) in input_bounds.items()
     ]
 
-    constant_spaces = [
-        DiscreteParameter(name, [1]) for name in climate_variables
-    ]
+    constant_spaces = [DiscreteParameter(name, [1]) for name in climate_variables]
     parameter_spaces.extend(constant_spaces)
 
     return ParameterSpace(parameter_spaces)
@@ -57,12 +58,12 @@ def read_sample_locations_air_pollution(path) -> pd.DataFrame:
 
 
 def run_bayes_optimization(
-        model: IModel,
-        parameter_space: ParameterSpace,
-        acquisition_func: ModelVariance,
-        batch_size=1,
-        max_iterations: int = 30,
-        climate_variables: list[str] = [],
+    model: IModel,
+    parameter_space: ParameterSpace,
+    acquisition_func: ModelVariance,
+    batch_size=1,
+    max_iterations: int = 30,
+    climate_variables: list[str] = [],
 ):
     expdesign_loop = CustomExperimentalDesignLoop(
         model=model,
@@ -72,30 +73,34 @@ def run_bayes_optimization(
         climate_variables=climate_variables,
     )
 
-    expdesign_loop.run_loop(
-        lambda x: get_air_pollutant_level(x[0]), max_iterations
-    )
+    expdesign_loop.run_loop(lambda x: get_air_pollutant_level(x[0]), max_iterations)
     return expdesign_loop
 
 
 def plot_results(
-        model: IModel,
-        observations: np.ndarray,
-        bounds: dict[str, tuple[float, float]],
-        climate_variables: list[str],
+    model: IModel,
+    observations: np.ndarray,
+    bounds: dict[str, tuple[float, float]],
+    climate_variables: list[str],
+    load_from_cache: bool = True,
 ):
+    num_samples = 10
     linear_spaces = []
-    num_samples = 125
     for name, (min_bound, max_bound) in bounds.items():
         linear_spaces.append(
             np.linspace(start=min_bound, stop=max_bound, num=num_samples)
         )
 
     meshgrid = np.meshgrid(*linear_spaces)
-    model_inputs = np.column_stack(
-        [meshgrid_dimension.ravel() for meshgrid_dimension in meshgrid]
-    )
-    model_inputs = extend_train_data(model_inputs, climate_variables)
+
+    if load_from_cache:
+        # get meshgrid of num_samples, hence num_samples squared
+        model_inputs = get_cached_openweather_data(num_samples**2)
+    else:
+        model_inputs = np.column_stack(
+            [meshgrid_dimension.ravel() for meshgrid_dimension in meshgrid]
+        )
+        model_inputs = extend_train_data(model_inputs, climate_variables)
 
     mean, uncertainty = model.predict(model_inputs)
 
@@ -124,13 +129,16 @@ def plot_results(
     plt.show()
 
 
-def evaluate_model(y_pred: npt.ArrayLike, y_true: npt.ArrayLike,
-                   metric: Literal['MAE', 'MSE', 'RMSE'] = 'MAE') -> float:
-    if metric == 'MAE':
+def evaluate_model(
+    y_pred: npt.ArrayLike,
+    y_true: npt.ArrayLike,
+    metric: Literal["MAE", "MSE", "RMSE"] = "MAE",
+) -> float:
+    if metric == "MAE":
         return mean_absolute_error(y_true, y_pred)
-    if metric == 'MSE':
+    if metric == "MSE":
         return mean_squared_error(y_true, y_pred)
-    if metric == 'RMSE':
+    if metric == "RMSE":
         return mean_squared_error(y_true, y_pred, squared=False)
 
 
@@ -139,9 +147,8 @@ def run_basic_gp_regression(sample_locations_air_pollution_df: pd.DataFrame):
     GPy.plotting.change_plotting_library("matplotlib")
 
     filtered_df = sample_locations_air_pollution_df[
-        sample_locations_air_pollution_df["datetime"]
-        == "2023-12-01 17:00:00+00:00"
-        ]
+        sample_locations_air_pollution_df["datetime"] == "2023-12-01 17:00:00+00:00"
+    ]
     train_x = filtered_df[["latitude", "longitude"]].to_numpy()
     train_y = np.expand_dims(filtered_df["pm2_5"].to_numpy(), axis=1)
 
@@ -170,6 +177,7 @@ def main(climate_variables):
     sample_locations_air_pollution_df = read_sample_locations_air_pollution(
         Path(INPUTS_DIR, "air_pollution_per_lat_lng.csv")
     )
+
     bounds = {}
     # for parameter in input_parameters:
     #     min_bound = sample_locations_air_pollution_df.get(parameter).min()
@@ -189,9 +197,7 @@ def main(climate_variables):
     bounds["longitude"] = longitude_bounds
     bounds["latitude"] = latitude_bounds
 
-    parameter_space = get_parameter_space(
-        bounds, climate_variables=[]
-    )
+    parameter_space = get_parameter_space(bounds, climate_variables=[])
 
     design = LatinDesign(parameter_space)
 
@@ -205,9 +211,7 @@ def main(climate_variables):
     model = get_model(train_x=train_x, train_y=train_y)
     acquisition_func = ModelVariance(model=model)
 
-    parameter_space = get_parameter_space(
-        bounds, climate_variables=climate_variables
-    )
+    parameter_space = get_parameter_space(bounds, climate_variables=climate_variables)
 
     results = run_bayes_optimization(
         model,
