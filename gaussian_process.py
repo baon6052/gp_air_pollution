@@ -1,19 +1,20 @@
 from pathlib import Path
+from typing import Literal
 
-import click
 import GPy
+import click
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
+from GPy.models import GPRegression
 from emukit.core import ContinuousParameter, DiscreteParameter, ParameterSpace
 from emukit.core.initial_designs.latin_design import LatinDesign
 from emukit.core.interfaces import IModel
-from emukit.experimental_design import ExperimentalDesignLoop
 from emukit.experimental_design.acquisitions import ModelVariance
 from emukit.model_wrappers import GPyModelWrapper
-from GPy.models import GPRegression
+from sklearn.metrics import mean_squared_error, mean_absolute_error
 
 from custom_experimental_design_loop import CustomExperimentalDesignLoop
 from dataset import (
@@ -36,7 +37,7 @@ def get_model(train_x: npt.ArrayLike, train_y: npt.ArrayLike):
 
 
 def get_parameter_space(
-    input_bounds: dict[str, tuple[float, float]], climate_variables: list[str]
+        input_bounds: dict[str, tuple[float, float]], climate_variables: list[str]
 ):
     parameter_spaces = [
         ContinuousParameter(name, min_bound, max_bound)
@@ -56,12 +57,12 @@ def read_sample_locations_air_pollution(path) -> pd.DataFrame:
 
 
 def run_bayes_optimization(
-    model: IModel,
-    parameter_space: ParameterSpace,
-    acquisition_func: ModelVariance,
-    batch_size=1,
-    max_iterations: int = 30,
-    climate_variables: list[str] = [],
+        model: IModel,
+        parameter_space: ParameterSpace,
+        acquisition_func: ModelVariance,
+        batch_size=1,
+        max_iterations: int = 30,
+        climate_variables: list[str] = [],
 ):
     expdesign_loop = CustomExperimentalDesignLoop(
         model=model,
@@ -78,10 +79,10 @@ def run_bayes_optimization(
 
 
 def plot_results(
-    model: IModel,
-    observations: np.ndarray,
-    bounds: dict[str, tuple[float, float]],
-    climate_variables: list[str],
+        model: IModel,
+        observations: np.ndarray,
+        bounds: dict[str, tuple[float, float]],
+        climate_variables: list[str],
 ):
     linear_spaces = []
     num_samples = 125
@@ -123,6 +124,16 @@ def plot_results(
     plt.show()
 
 
+def evaluate_model(y_pred: npt.ArrayLike, y_true: npt.ArrayLike,
+                   metric: Literal['MAE', 'MSE', 'RMSE'] = 'MAE') -> float:
+    if metric == 'MAE':
+        return mean_absolute_error(y_true, y_pred)
+    if metric == 'MSE':
+        return mean_squared_error(y_true, y_pred)
+    if metric == 'RMSE':
+        return mean_squared_error(y_true, y_pred, squared=False)
+
+
 def run_basic_gp_regression(sample_locations_air_pollution_df: pd.DataFrame):
     matplotlib.use("Agg")
     GPy.plotting.change_plotting_library("matplotlib")
@@ -130,7 +141,7 @@ def run_basic_gp_regression(sample_locations_air_pollution_df: pd.DataFrame):
     filtered_df = sample_locations_air_pollution_df[
         sample_locations_air_pollution_df["datetime"]
         == "2023-12-01 17:00:00+00:00"
-    ]
+        ]
     train_x = filtered_df[["latitude", "longitude"]].to_numpy()
     train_y = np.expand_dims(filtered_df["pm2_5"].to_numpy(), axis=1)
 
