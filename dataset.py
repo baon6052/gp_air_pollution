@@ -199,64 +199,6 @@ def get_data_openweathermap(path):
     large_df = pd.concat(list_of_dfs, ignore_index=True)
 
 
-def extend_train_data(
-        coordinates: np.ndarray, climate_variables: list[str]
-) -> np.ndarray:
-    if not climate_variables:
-        return coordinates
-
-    train_data = []
-    for longitude_coordinate, latitude_coordinate in coordinates:
-        point = Point(longitude_coordinate, latitude_coordinate)
-        df = get_air_pollution_data(point)
-        climate_variable_values = [longitude_coordinate, latitude_coordinate]
-        for climate_variable in climate_variables:
-            climate_variable_values.append(
-                df[df["datetime"] == TIME][climate_variable].values[0]
-            )
-
-        train_data.append(climate_variable_values)
-
-    return np.array(train_data)
-
-
-def get_air_pollutant_level(coords: np.ndarray) -> np.ndarray:
-    """
-    (latitude, long) -> pollutant level for time
-    """
-    point = Point(coords[0], coords[1])
-    df = get_air_pollution_data(point)
-    return np.expand_dims(df[df["datetime"] == str(TIME)]["pm2_5"].values, axis=1)
-
-
-def get_cached_openweather_data(num_samples: int | None = None,
-                                climate_variables: list[str] = []) -> np.array:
-    cached_data = []
-    columns = ["longitude", "latitude"]
-    columns.extend(climate_variables)
-
-    with open("data/cached_openweather_data.csv", "r", newline="") as csvfile:
-        dict_reader = csv.DictReader(csvfile)
-        for row in dict_reader:
-            if num_samples:
-                if num_samples == 0:
-                    break
-                num_samples -= 1
-
-            cached_data.append(np.array(
-                [float(value) for key, value in row.items() if key in columns]))
-    return np.array(cached_data)
-
-
-def get_cached_air_pollution_data(num_samples: int | None,
-                                 columns: list[str] = ["pm2_5"]) -> np.ndarray:
-    df = pd.read_csv(f"{DATA_DIR}/cached_air_pollution_data.csv")
-    if not num_samples:
-        return np.array([])
-
-    return df[:num_samples][columns].values
-
-
 def get_climate_data(
         coordinates: np.array,
         climate_variables: list[str],
@@ -300,6 +242,56 @@ def get_climate_data(
         np.array(climate_variable_data[key]) for key in climate_variable_data.keys()
     ]
     return np.vstack(arrays).T
+
+
+def extend_train_data(
+        coordinates: np.ndarray, climate_variables: list[str]
+) -> np.ndarray:
+    if not climate_variables:
+        return coordinates
+
+    df = get_climate_data(coordinates, climate_variables)
+
+    train_data = np.column_stack((coordinates, df))
+
+    return train_data
+
+
+def get_air_pollutant_level(coords: np.ndarray) -> np.ndarray:
+    """
+    (latitude, long) -> pollutant level for time
+    """
+    point = Point(coords[0], coords[1])
+    df = get_air_pollution_data(point)
+    return np.expand_dims(df[df["datetime"] == str(TIME)]["pm2_5"].values, axis=1)
+
+
+def get_cached_openweather_data(num_samples: int | None = None,
+                                climate_variables: list[str] = []) -> np.array:
+    cached_data = []
+    columns = ["longitude", "latitude"]
+    columns.extend(climate_variables)
+
+    with open("data/cached_openweather_data.csv", "r", newline="") as csvfile:
+        dict_reader = csv.DictReader(csvfile)
+        for row in dict_reader:
+            if num_samples:
+                if num_samples == 0:
+                    break
+                num_samples -= 1
+
+            cached_data.append(np.array(
+                [float(value) for key, value in row.items() if key in columns]))
+    return np.array(cached_data)
+
+
+def get_cached_air_pollution_data(num_samples: int | None,
+                                  columns: list[str] = ["pm2_5"]) -> np.ndarray:
+    df = pd.read_csv(f"{DATA_DIR}/cached_air_pollution_data.csv")
+    if not num_samples:
+        return np.array([])
+
+    return df[:num_samples][columns].values
 
 
 def setup_cache_data(
