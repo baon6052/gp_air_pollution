@@ -1,7 +1,7 @@
-from pathlib import Path
-from datetime import datetime, timedelta
 import csv
 import os
+from datetime import datetime, timedelta
+from pathlib import Path
 
 import geopandas as gpd
 import numpy as np
@@ -39,6 +39,20 @@ def get_batch_air_pollutant_levels(coordinates: npt.ArrayLike) -> npt.ArrayLike:
         air_pollutant_levels.append(air_pollutant_level)
 
     return np.squeeze(np.array(air_pollutant_levels), axis=1)
+
+
+def get_batch_air_pollutant_data(coordinates: npt.ArrayLike) -> npt.ArrayLike:
+    columns = ['latitude', 'longitude', 'co', 'no', 'no2', 'o3', 'so2', 'pm2_5', 'pm10',
+               'nh3']
+    air_pollutant_data = []
+
+    for coord in coordinates:
+        point = Point(coord[0], coord[1])
+        df = get_air_pollution_data(point)
+        reading = df[df["datetime"] == str(TIME)][columns]
+        air_pollutant_data.append(reading)
+
+    return air_pollutant_data
 
 
 def convert_multipoint_to_point(multipoint: MultiPoint):
@@ -79,7 +93,7 @@ def local_to_utc(local_datetime, local_timezone="Europe/London", timestamp=True)
 
 
 def utc_to_local(
-    utc_timestamp, local_timezone="Europe/London", timestamp=True
+        utc_timestamp, local_timezone="Europe/London", timestamp=True
 ) -> int | datetime:
     """
     Convert a UTC timestamp to a local time datetime object.
@@ -186,7 +200,7 @@ def get_data_openweathermap(path):
 
 
 def extend_train_data(
-    coordinates: np.ndarray, climate_variables: list[str]
+        coordinates: np.ndarray, climate_variables: list[str]
 ) -> np.ndarray:
     if not climate_variables:
         return coordinates
@@ -215,7 +229,8 @@ def get_air_pollutant_level(coords: np.ndarray) -> np.ndarray:
     return np.expand_dims(df[df["datetime"] == str(TIME)]["pm2_5"].values, axis=1)
 
 
-def get_cached_openweather_data(num_samples: int | None = None, climate_variables: list[str] = []) -> np.array:
+def get_cached_openweather_data(num_samples: int | None = None,
+                                climate_variables: list[str] = []) -> np.array:
     cached_data = []
     columns = ["longitude", "latitude"]
     columns.extend(climate_variables)
@@ -228,13 +243,14 @@ def get_cached_openweather_data(num_samples: int | None = None, climate_variable
                     break
                 num_samples -= 1
 
-            cached_data.append(np.array([float(value) for key, value in row.items() if key in columns]))
+            cached_data.append(np.array(
+                [float(value) for key, value in row.items() if key in columns]))
     return np.array(cached_data)
 
 
 def get_climate_data(
-    coordinates: np.array,
-    climate_variables: list[str],
+        coordinates: np.array,
+        climate_variables: list[str],
 ) -> pd.DataFrame:
     base_url = "https://history.openweathermap.org/data/2.5/history/city"
     start_timestamp = int(TIME.timestamp())
@@ -278,10 +294,10 @@ def get_climate_data(
 
 
 def setup_cache_data(
-    longitude_bounds: tuple[float, float],
-    latitude_bounds: tuple[float, float],
-    climate_variables: list[str] = [],
-    num_samples: int = 1000,
+        longitude_bounds: tuple[float, float],
+        latitude_bounds: tuple[float, float],
+        climate_variables: list[str] = [],
+        num_samples: int = 1000,
 ):
     longitude_linear_space = np.linspace(
         start=longitude_bounds[0], stop=longitude_bounds[1], num=num_samples
@@ -309,7 +325,7 @@ def setup_cache_data(
         writer.writeheader()
 
         for (longitude_coordinate, latitude_coordinate), climate_data in zip(
-            coordinates, climate_variable_data
+                coordinates, climate_variable_data
         ):
             row_data = {
                 "longitude": longitude_coordinate,
@@ -320,6 +336,19 @@ def setup_cache_data(
                 row_data[climate_var] = climate_data[i]
             writer.writerow(row_data)
 
+def generate_air_pollution_cache():
+    coordinates = pd.read_csv(f"{DATA_DIR}/cached_openweather_data.csv")[
+        ['latitude', 'longitude']].values
+
+    print(coordinates)
+
+    raw_data = get_batch_air_pollutant_data(coordinates)
+
+    air_pollutant_df = pd.concat(raw_data)
+
+    print(air_pollutant_df)
+
+    air_pollutant_df.to_csv(f"{DATA_DIR}/cached_air_pollution_data.csv", index=False)
 
 if __name__ == "__main__":
     longitude_bounds = (51.41728104, 51.56728104)

@@ -22,8 +22,7 @@ from dataset import (
     get_air_pollutant_level,
     get_batch_air_pollutant_levels, INPUTS_DIR,
 )
-from dataset import get_cached_openweather_data
-
+from dataset import get_cached_openweather_data, generate_air_pollution_cache
 
 
 def get_model(train_x: npt.ArrayLike, train_y: npt.ArrayLike):
@@ -34,7 +33,7 @@ def get_model(train_x: npt.ArrayLike, train_y: npt.ArrayLike):
 
 
 def get_parameter_space(
-    input_bounds: dict[str, tuple[float, float]], climate_variables: list[str]
+        input_bounds: dict[str, tuple[float, float]], climate_variables: list[str]
 ):
     parameter_spaces = [
         ContinuousParameter(name, min_bound, max_bound)
@@ -52,12 +51,12 @@ def read_sample_locations_air_pollution(path) -> pd.DataFrame:
 
 
 def run_bayes_optimization(
-    model: IModel,
-    parameter_space: ParameterSpace,
-    acquisition_func: ModelVariance,
-    batch_size=1,
-    max_iterations: int = 30,
-    climate_variables: list[str] = [],
+        model: IModel,
+        parameter_space: ParameterSpace,
+        acquisition_func: ModelVariance,
+        batch_size=1,
+        max_iterations: int = 30,
+        climate_variables: list[str] = [],
 ):
     expdesign_loop = CustomExperimentalDesignLoop(
         model=model,
@@ -72,11 +71,11 @@ def run_bayes_optimization(
 
 
 def plot_results(
-    model: IModel,
-    observations: np.ndarray,
-    bounds: dict[str, tuple[float, float]],
-    climate_variables: list[str],
-    load_from_cache: bool = True,
+        model: IModel,
+        observations: np.ndarray,
+        bounds: dict[str, tuple[float, float]],
+        climate_variables: list[str],
+        load_from_cache: bool = True,
 ):
     num_samples = 10
     linear_spaces = []
@@ -89,7 +88,8 @@ def plot_results(
 
     if load_from_cache:
         # get meshgrid of num_samples, hence num_samples squared
-        model_inputs = get_cached_openweather_data(num_samples**2, climate_variables=climate_variables)
+        model_inputs = get_cached_openweather_data(num_samples ** 2,
+                                                   climate_variables=climate_variables)
     else:
         model_inputs = np.column_stack(
             [meshgrid_dimension.ravel() for meshgrid_dimension in meshgrid]
@@ -124,9 +124,9 @@ def plot_results(
 
 
 def evaluate_model(
-    y_pred: npt.ArrayLike,
-    y_true: npt.ArrayLike,
-    metric: Literal["MAE", "MSE", "RMSE"] = "MAE",
+        y_pred: npt.ArrayLike,
+        y_true: npt.ArrayLike,
+        metric: Literal["MAE", "MSE", "RMSE"] = "MAE",
 ) -> float:
     if metric == "MAE":
         return mean_absolute_error(y_true, y_pred)
@@ -142,7 +142,7 @@ def run_basic_gp_regression(sample_locations_air_pollution_df: pd.DataFrame):
 
     filtered_df = sample_locations_air_pollution_df[
         sample_locations_air_pollution_df["datetime"] == "2023-12-01 17:00:00+00:00"
-    ]
+        ]
     train_x = filtered_df[["latitude", "longitude"]].to_numpy()
     train_y = np.expand_dims(filtered_df["pm2_5"].to_numpy(), axis=1)
 
@@ -222,4 +222,5 @@ def main(climate_variables):
 
 
 if __name__ == "__main__":
-    main()
+    # main()
+    generate_air_pollution_cache()
