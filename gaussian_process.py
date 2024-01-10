@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Literal
 
 import GPy
+from GPy.util.normalizer import Standardize
 import click
 import matplotlib
 import matplotlib.pyplot as plt
@@ -29,7 +30,7 @@ from dataset import get_cached_openweather_data
 def get_model(train_x: npt.ArrayLike, train_y: npt.ArrayLike):
     num_input_parameters = train_x.shape[1]
     kernel = GPy.kern.Matern52(num_input_parameters)
-    model_gpy = GPRegression(train_x, train_y, kernel)
+    model_gpy = GPRegression(train_x, train_y, kernel, normalizer=Standardize())
     return GPyModelWrapper(model_gpy)
 
 
