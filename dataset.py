@@ -248,6 +248,15 @@ def get_cached_openweather_data(num_samples: int | None = None,
     return np.array(cached_data)
 
 
+def get_cached_air_pollution_data(num_samples: int | None,
+                                 columns: list[str] = ["pm2_5"]) -> np.ndarray:
+    df = pd.read_csv(f"{DATA_DIR}/cached_air_pollution_data.csv")
+    if not num_samples:
+        return np.array([])
+
+    return df[:num_samples][columns].values
+
+
 def get_climate_data(
         coordinates: np.array,
         climate_variables: list[str],
@@ -336,19 +345,17 @@ def setup_cache_data(
                 row_data[climate_var] = climate_data[i]
             writer.writerow(row_data)
 
+
 def generate_air_pollution_cache():
     coordinates = pd.read_csv(f"{DATA_DIR}/cached_openweather_data.csv")[
         ['latitude', 'longitude']].values
-
-    print(coordinates)
 
     raw_data = get_batch_air_pollutant_data(coordinates)
 
     air_pollutant_df = pd.concat(raw_data)
 
-    print(air_pollutant_df)
-
     air_pollutant_df.to_csv(f"{DATA_DIR}/cached_air_pollution_data.csv", index=False)
+
 
 if __name__ == "__main__":
     longitude_bounds = (51.41728104, 51.56728104)

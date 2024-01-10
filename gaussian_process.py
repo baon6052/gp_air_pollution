@@ -1,3 +1,4 @@
+import math
 from pathlib import Path
 from typing import Literal
 
@@ -20,9 +21,9 @@ from custom_experimental_design_loop import CustomExperimentalDesignLoop
 from dataset import (
     extend_train_data,
     get_air_pollutant_level,
-    get_batch_air_pollutant_levels, INPUTS_DIR,
+    get_batch_air_pollutant_levels, INPUTS_DIR, get_cached_air_pollution_data,
 )
-from dataset import get_cached_openweather_data, generate_air_pollution_cache
+from dataset import get_cached_openweather_data
 
 
 def get_model(train_x: npt.ArrayLike, train_y: npt.ArrayLike):
@@ -70,59 +71,6 @@ def run_bayes_optimization(
     return expdesign_loop
 
 
-def plot_results(
-        model: IModel,
-        observations: np.ndarray,
-        bounds: dict[str, tuple[float, float]],
-        climate_variables: list[str],
-        load_from_cache: bool = True,
-):
-    num_samples = 10
-    linear_spaces = []
-    for name, (min_bound, max_bound) in bounds.items():
-        linear_spaces.append(
-            np.linspace(start=min_bound, stop=max_bound, num=num_samples)
-        )
-
-    meshgrid = np.meshgrid(*linear_spaces)
-
-    if load_from_cache:
-        # get meshgrid of num_samples, hence num_samples squared
-        model_inputs = get_cached_openweather_data(num_samples ** 2,
-                                                   climate_variables=climate_variables)
-    else:
-        model_inputs = np.column_stack(
-            [meshgrid_dimension.ravel() for meshgrid_dimension in meshgrid]
-        )
-        model_inputs = extend_train_data(model_inputs, climate_variables)
-
-    mean, uncertainty = model.predict(model_inputs)
-
-    reshape_parameters = tuple([num_samples] * len(bounds))
-    mean = mean.reshape(reshape_parameters)
-    uncertainty = uncertainty.reshape(reshape_parameters)
-
-    fig, (ax1, ax2) = plt.subplots(
-        ncols=2, nrows=1, figsize=(12, 6), constrained_layout=True
-    )
-    ax1.set_title("Mean PM2.5 Concentrations")
-    ax1.set_xlabel("Longitude")
-    ax1.set_ylabel("Latitude")
-    cs1 = ax1.contourf(meshgrid[0], meshgrid[1], mean)
-    ax1.scatter(observations[:, 0], observations[:, 1], c="red", marker="o")
-    plt.colorbar(cs1, ax=ax1)
-
-    ax2.set_title("Uncertainty in estimation")
-    ax2.set_xlabel("Longitude")
-    ax2.set_ylabel("Latitude")
-    cs2 = ax2.contourf(meshgrid[0], meshgrid[1], uncertainty)
-    ax2.scatter(observations[:, 0], observations[:, 1], c="red", marker="o")
-    plt.colorbar(cs2, ax=ax2)
-    fig.suptitle("Simple Gaussian Process Model for PM2.5 Concentrations")
-    fig.savefig("gaussian_process.png")
-    plt.show()
-
-
 def evaluate_model(
         y_pred: npt.ArrayLike,
         y_true: npt.ArrayLike,
@@ -134,6 +82,53 @@ def evaluate_model(
         return mean_squared_error(y_true, y_pred)
     if metric == "RMSE":
         return mean_squared_error(y_true, y_pred, squared=False)
+
+
+def plot_results(mean, uncertainty, coords, observations):
+    fig, (ax1, ax2) = plt.subplots(
+        ncols=2, nrows=1, figsize=(12, 6), constrained_layout=True
+    )
+
+    num_samples = math.isqrt(coords.shape[0])
+    print(num_samples)
+
+    mean = mean.reshape((num_samples, num_samples))
+    uncertainty = uncertainty.reshape((num_samples, num_samples))
+
+    ax1.set_title("Mean PM2.5 Concentrations")
+    ax1.set_xlabel("Longitude")
+    ax1.set_ylabel("Latitude")
+    cs1 = ax1.contourf(coords[:, 0].reshape((num_samples, num_samples)),
+                       coords[:, 1].reshape((num_samples, num_samples)), mean)
+    ax1.scatter(observations[:, 0], observations[:, 1], c="red", marker="o")
+    plt.colorbar(cs1, ax=ax1)
+
+    ax2.set_title("Uncertainty in estimation")
+    ax2.set_xlabel("Longitude")
+    ax2.set_ylabel("Latitude")
+    cs2 = ax2.contourf(coords[:, 0].reshape((num_samples, num_samples)),
+                       coords[:, 1].reshape((num_samples, num_samples)), uncertainty)
+    ax2.scatter(observations[:, 0], observations[:, 1], c="red", marker="o")
+    plt.colorbar(cs2, ax=ax2)
+    fig.suptitle("Simple Gaussian Process Model for PM2.5 Concentrations")
+    fig.savefig("gaussian_process.png")
+    plt.show()
+
+
+def process_results(model: IModel, observations: np.ndarray, num_samples: int,
+                    climate_variables: list[str] = []):
+    model_inputs = get_cached_openweather_data(num_samples ** 2, climate_variables)
+    print(model_inputs[:, :2].shape)
+    ground_truth = get_cached_air_pollution_data(num_samples ** 2)
+
+    mean, uncertainty = model.predict(model_inputs)
+
+    # plot the results
+    plot_results(mean, uncertainty, model_inputs[:, :2], observations)
+
+    # evaluate model performance
+    mae = evaluate_model(mean, ground_truth)
+    print(f"Mean absolute error: {mae:.2f}")
 
 
 def run_basic_gp_regression(sample_locations_air_pollution_df: pd.DataFrame):
@@ -213,14 +208,19 @@ def main(climate_variables):
         acquisition_func,
         climate_variables=climate_variables,
     )
-    plot_results(
+    process_results(
         results.model,
-        results.loop_state.X,
-        bounds,
-        climate_variables=climate_variables,
+        results.loop_state.X[:, :2],
+        200,
+        climate_variables=climate_variables
     )
+    # plot_results(
+    #     results.model,
+    #     results.loop_state.X,
+    #     bounds,
+    #     climate_variables=climate_variables,
+    # )
 
 
 if __name__ == "__main__":
-    # main()
-    generate_air_pollution_cache()
+    main()
