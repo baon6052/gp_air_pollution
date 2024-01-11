@@ -1,4 +1,3 @@
-import csv
 import math
 from pathlib import Path
 from typing import Literal, Optional
@@ -230,20 +229,6 @@ def main(climate_variables: Optional[list[str]], num_samples: int, plotting: boo
         climate_variables=climate_variables,
         plot_enabled=plotting
     )
-
-    with open("exp_data/acquisition_function.csv", "a+") as f:
-        fieldnames = ["acquisition_function", "mae"]
-        writer = csv.DictWriter(f, delimiter=',', fieldnames=fieldnames,
-                                quoting=csv.QUOTE_MINIMAL,
-                                quotechar='"')
-        writer.writerow({"acquisition_function": acquisition_function, "mae": mae})
-
-    # plot_results(
-    #     results.model,
-    #     results.loop_state.X,
-    #     bounds,
-    #     climate_variables=climate_variables,
-    # )
 
 
 if __name__ == "__main__":
