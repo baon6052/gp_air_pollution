@@ -1,9 +1,9 @@
+import csv
 import math
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Optional
 
 import GPy
-from GPy.util.normalizer import Standardize
 import click
 import matplotlib
 import matplotlib.pyplot as plt
@@ -11,10 +11,12 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 from GPy.models import GPRegression
+from GPy.util.normalizer import Standardize
 from emukit.core import ContinuousParameter, DiscreteParameter, ParameterSpace
 from emukit.core.initial_designs.latin_design import LatinDesign
 from emukit.core.interfaces import IModel
-from emukit.experimental_design.acquisitions import ModelVariance
+from emukit.experimental_design.acquisitions import ModelVariance, \
+    IntegratedVarianceReduction
 from emukit.model_wrappers import GPyModelWrapper
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 
@@ -91,7 +93,6 @@ def plot_results(mean, uncertainty, coords, observations):
     )
 
     num_samples = math.isqrt(coords.shape[0])
-    print(num_samples)
 
     mean = mean.reshape((num_samples, num_samples))
     uncertainty = uncertainty.reshape((num_samples, num_samples))
@@ -112,24 +113,25 @@ def plot_results(mean, uncertainty, coords, observations):
     ax2.scatter(observations[:, 0], observations[:, 1], c="red", marker="o")
     plt.colorbar(cs2, ax=ax2)
     fig.suptitle("Simple Gaussian Process Model for PM2.5 Concentrations")
-    fig.savefig("gaussian_process.png")
+    fig.savefig("figs/gaussian_process.png")
+    fig.savefig("figs/gaussian_process.pdf")
     plt.show()
 
 
 def process_results(model: IModel, observations: np.ndarray, num_samples: int,
-                    climate_variables: list[str] = []):
+                    climate_variables: list[str] = [], plot_enabled: bool = True):
     model_inputs = get_cached_openweather_data(num_samples ** 2, climate_variables)
-    print(model_inputs[:, :2].shape)
     ground_truth = get_cached_air_pollution_data(num_samples ** 2)
 
     mean, uncertainty = model.predict(model_inputs)
 
     # plot the results
-    plot_results(mean, uncertainty, model_inputs[:, :2], observations)
+    if plot_enabled:
+        plot_results(mean, uncertainty, model_inputs[:, :2], observations)
 
     # evaluate model performance
     mae = evaluate_model(mean, ground_truth)
-    print(f"Mean absolute error: {mae:.2f}")
+    return mae
 
 
 def run_basic_gp_regression(sample_locations_air_pollution_df: pd.DataFrame):
@@ -159,8 +161,14 @@ def process_items(ctx, param, value):
 
 
 @click.command()
-@click.option("--climate_variables", callback=process_items, required=False)
-def main(climate_variables):
+@click.option("--climate_variables", callback=process_items, required=False, )
+@click.option("--num_samples", default=5)
+@click.option("--plotting/--no-plotting", default=True)
+@click.option("--acquisition_function",
+              type=click.Choice(["ModelVariance", "IVR"], case_sensitive=False),
+              default="ModelVariance")
+def main(climate_variables: Optional[list[str]], num_samples: int, plotting: bool,
+         acquisition_function: str):
     if not climate_variables:
         climate_variables = []
 
@@ -199,9 +207,15 @@ def main(climate_variables):
     train_y = get_batch_air_pollutant_levels(train_x[:, :2])
 
     model = get_model(train_x=train_x, train_y=train_y)
-    acquisition_func = ModelVariance(model=model)
 
     parameter_space = get_parameter_space(bounds, climate_variables=climate_variables)
+
+    if acquisition_function == "IVR":
+        acquisition_func = IntegratedVarianceReduction(model=model,
+                                                       space=parameter_space,
+                                                       num_monte_carlo_points=10_000)
+    else:
+        acquisition_func = ModelVariance(model=model)
 
     results = run_bayes_optimization(
         model,
@@ -209,12 +223,21 @@ def main(climate_variables):
         acquisition_func,
         climate_variables=climate_variables,
     )
-    process_results(
+    mae = process_results(
         results.model,
         results.loop_state.X[:, :2],
         200,
-        climate_variables=climate_variables
+        climate_variables=climate_variables,
+        plot_enabled=plotting
     )
+
+    with open("exp_data/acquisition_function.csv", "a+") as f:
+        fieldnames = ["acquisition_function", "mae"]
+        writer = csv.DictWriter(f, delimiter=',', fieldnames=fieldnames,
+                                quoting=csv.QUOTE_MINIMAL,
+                                quotechar='"')
+        writer.writerow({"acquisition_function": acquisition_function, "mae": mae})
+
     # plot_results(
     #     results.model,
     #     results.loop_state.X,
