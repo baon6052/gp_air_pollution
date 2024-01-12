@@ -5,6 +5,6 @@ do
   for run in {1..20}
   do
     echo num_samples="$num_samples", run="$run"
-    python gaussian_process.py --no-plotting --num_samples=$num_samples
+    python num_samples_effect.py --num_samples=$num_samples
   done
 done
