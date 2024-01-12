@@ -1,5 +1,10 @@
 from typing import Callable
 
+import numpy as np
+from emukit.core import ParameterSpace
+from emukit.core.interfaces import IModel
+from emukit.core.loop import UserFunctionWrapper
+
 
 class CustomModelFreeMonteCarloSensitivity(object):
     """
@@ -33,7 +38,7 @@ class CustomModelFreeMonteCarloSensitivity(object):
         num_monte_carlo_points: int,
         total_mean: np.float64,
         total_variance: np.float64,
-    ) -> Tuple:
+    ) -> tuple:
         """
         Saltelli estimators of the total mean and variance
         """
@@ -49,7 +54,7 @@ class CustomModelFreeMonteCarloSensitivity(object):
         )
         return variable_main_variance, variable_total_variance
 
-    def compute_statistics(self, sample: np.ndarray) -> Tuple:
+    def compute_statistics(self, sample: np.ndarray) -> tuple:
         """
         Computes mean and variance of a sample
 
@@ -63,7 +68,7 @@ class CustomModelFreeMonteCarloSensitivity(object):
         main_sample: np.ndarray = None,
         fixing_sample: np.ndarray = None,
         num_monte_carlo_points: int = int(1e5),
-    ) -> Tuple:
+    ) -> tuple:
         """
         Computes the main and total effects using Monte Carlo and a give number of samples.
         - Main effects: contribution of x_j alone to the variance of f.
