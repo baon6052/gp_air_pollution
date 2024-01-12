@@ -218,6 +218,18 @@ def main(
     acquisition_function: str,
     kernel_name: str,
 ):
+    run_model(
+        climate_variables, num_samples, plotting, acquisition_function, kernel_name
+    )
+
+
+def run_model(
+    climate_variables: Optional[list[str]],
+    num_samples: int,
+    plotting: bool,
+    acquisition_function: str,
+    kernel_name: str,
+):
     if not climate_variables:
         climate_variables = []
 
@@ -278,7 +290,7 @@ def main(
         climate_variables=climate_variables,
         plot_enabled=plotting,
     )
-    return mae
+    return mae, results.model, parameter_space
 
 
 if __name__ == "__main__":
