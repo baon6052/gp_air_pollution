@@ -29,8 +29,8 @@ from dataset import (
     get_batch_air_pollutant_levels,
     INPUTS_DIR,
     get_cached_air_pollution_data,
+    get_cached_openweather_data,
 )
-from dataset import get_cached_openweather_data
 
 
 def get_model(

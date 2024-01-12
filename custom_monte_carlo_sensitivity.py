@@ -5,6 +5,8 @@ from emukit.core import ParameterSpace
 from emukit.core.interfaces import IModel
 from emukit.core.loop import UserFunctionWrapper
 
+from dataset import get_cached_air_pollution_data, get_cached_openweather_data
+
 
 class CustomModelFreeMonteCarloSensitivity(object):
     """
@@ -21,14 +23,22 @@ class CustomModelFreeMonteCarloSensitivity(object):
         self.objective = UserFunctionWrapper(objective)
         self.input_domain = input_domain
 
-    def _generate_samples(self, num_monte_carlo_points: int = int(1e5)) -> None:
+    def _generate_samples(
+        self, num_monte_carlo_points: int = int(1e5), climate_variables: list[str] = []
+    ) -> None:
         """
         Generates the two samples that are used to compute the main and total indices
 
         :param num_monte_carlo_points: number of samples to generate
         """
-        self.main_sample = self.input_domain.sample_uniform(num_monte_carlo_points)
-        self.fixing_sample = self.input_domain.sample_uniform(num_monte_carlo_points)
+        # self.main_sample = self.input_domain.sample_uniform(num_monte_carlo_points)
+        self.main_sample = get_cached_openweather_data(
+            num_monte_carlo_points, climate_variables
+        )
+        self.fixing_sample = get_cached_openweather_data(
+            num_monte_carlo_points, climate_variables
+        )
+        # self.fixing_sample = self.input_domain.sample_uniform(num_monte_carlo_points)
 
     def saltelli_estimators(
         self,
@@ -68,6 +78,7 @@ class CustomModelFreeMonteCarloSensitivity(object):
         main_sample: np.ndarray = None,
         fixing_sample: np.ndarray = None,
         num_monte_carlo_points: int = int(1e5),
+        climate_variables: list[str] = [],
     ) -> tuple:
         """
         Computes the main and total effects using Monte Carlo and a give number of samples.
@@ -87,7 +98,7 @@ class CustomModelFreeMonteCarloSensitivity(object):
         """
         if main_sample is None or fixing_sample is None:
             self.num_monte_carlo_points = num_monte_carlo_points
-            self._generate_samples(self.num_monte_carlo_points)
+            self._generate_samples(self.num_monte_carlo_points, climate_variables)
         else:
             self.main_sample = main_sample
             self.fixing_sample = fixing_sample
