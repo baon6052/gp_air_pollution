@@ -4,11 +4,12 @@ import numpy as np
 from emukit.core import ParameterSpace
 from emukit.core.interfaces import IModel
 from emukit.core.loop import UserFunctionWrapper
+from emukit.sensitivity.monte_carlo import ModelFreeMonteCarloSensitivity
 
-from dataset import get_cached_air_pollution_data, get_cached_openweather_data
+from dataset import get_cached_openweather_data
 
 
-class CustomModelFreeMonteCarloSensitivity(object):
+class CustomModelFreeMonteCarloSensitivity(ModelFreeMonteCarloSensitivity):
     """
     Class to do sensitivity analysis of a function. It computes Monte Carlo approximations to
     the Sobol indexes and the total variance components of each input variable of some objective
@@ -23,8 +24,11 @@ class CustomModelFreeMonteCarloSensitivity(object):
         self.objective = UserFunctionWrapper(objective)
         self.input_domain = input_domain
 
+        super().__init__(objective, input_domain)
+
     def _generate_samples(
-        self, num_monte_carlo_points: int = int(1e5), climate_variables: list[str] = []
+            self, num_monte_carlo_points: int = int(1e5),
+            climate_variables: list[str] = []
     ) -> None:
         """
         Generates the two samples that are used to compute the main and total indices
@@ -32,53 +36,58 @@ class CustomModelFreeMonteCarloSensitivity(object):
         :param num_monte_carlo_points: number of samples to generate
         """
         # self.main_sample = self.input_domain.sample_uniform(num_monte_carlo_points)
-        self.main_sample = get_cached_openweather_data(
+
+        data = get_cached_openweather_data(
             num_monte_carlo_points, climate_variables
         )
-        self.fixing_sample = get_cached_openweather_data(
-            num_monte_carlo_points, climate_variables
-        )
-        # self.fixing_sample = self.input_domain.sample_uniform(num_monte_carlo_points)
+        # self.main_sample = get_cached_openweather_data(
+        #     num_monte_carlo_points, climate_variables
+        # )
+        main_idx = np.random.randint(0, data.shape[0], num_monte_carlo_points)
+        fixing_idx = np.random.randint(0, data.shape[0], num_monte_carlo_points)
+        self.main_sample = data[main_idx]
+        self.fixing_sample = data[fixing_idx]
 
-    def saltelli_estimators(
-        self,
-        f_main_sample: np.ndarray,
-        f_fixing_sample: np.ndarray,
-        f_new_fixing_sample: np.ndarray,
-        num_monte_carlo_points: int,
-        total_mean: np.float64,
-        total_variance: np.float64,
-    ) -> tuple:
-        """
-        Saltelli estimators of the total mean and variance
-        """
-
-        variable_main_variance = (
-            sum(f_main_sample * f_new_fixing_sample) / (num_monte_carlo_points - 1)
-            - total_mean**2
-        )
-        variable_total_variance = (
-            total_variance
-            - sum(f_fixing_sample * f_new_fixing_sample) / (num_monte_carlo_points - 1)
-            + total_mean**2
-        )
-        return variable_main_variance, variable_total_variance
-
-    def compute_statistics(self, sample: np.ndarray) -> tuple:
-        """
-        Computes mean and variance of a sample
-
-        :param sample: A sample to compute statistics for.
-        :return: A tuple (mean, variance).
-        """
-        return sample.mean(), sample.var()
-
+    # def saltelli_estimators(
+    #         self,
+    #         f_main_sample: np.ndarray,
+    #         f_fixing_sample: np.ndarray,
+    #         f_new_fixing_sample: np.ndarray,
+    #         num_monte_carlo_points: int,
+    #         total_mean: np.float64,
+    #         total_variance: np.float64,
+    # ) -> tuple:
+    #     """
+    #     Saltelli estimators of the total mean and variance
+    #     """
+    #
+    #     variable_main_variance = (
+    #             sum(f_main_sample * f_new_fixing_sample) / (num_monte_carlo_points - 1)
+    #             - total_mean ** 2
+    #     )
+    #     variable_total_variance = (
+    #             total_variance
+    #             - sum(f_fixing_sample * f_new_fixing_sample) / (
+    #                         num_monte_carlo_points - 1)
+    #             + total_mean ** 2
+    #     )
+    #     return variable_main_variance, variable_total_variance
+    #
+    # def compute_statistics(self, sample: np.ndarray) -> tuple:
+    #     """
+    #     Computes mean and variance of a sample
+    #
+    #     :param sample: A sample to compute statistics for.
+    #     :return: A tuple (mean, variance).
+    #     """
+    #     return sample.mean(), sample.var()
+    #
     def compute_effects(
-        self,
-        main_sample: np.ndarray = None,
-        fixing_sample: np.ndarray = None,
-        num_monte_carlo_points: int = int(1e5),
-        climate_variables: list[str] = [],
+            self,
+            main_sample: np.ndarray = None,
+            fixing_sample: np.ndarray = None,
+            num_monte_carlo_points: int = int(1e5),
+            climate_variables: list[str] = [],
     ) -> tuple:
         """
         Computes the main and total effects using Monte Carlo and a give number of samples.
@@ -108,7 +117,8 @@ class CustomModelFreeMonteCarloSensitivity(object):
         f_fixing_sample = self.objective.f(self.fixing_sample)
 
         total_mean, total_variance = self.compute_statistics(f_main_sample)
-        variable_names = self.input_domain.parameter_names
+        variable_names = ['longitude', 'latitude']
+        variable_names.extend(climate_variables)
 
         main_effects = {}
         total_effects = {}
