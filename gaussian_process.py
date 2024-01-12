@@ -1,6 +1,7 @@
 import math
 from pathlib import Path
 from typing import Literal, Optional
+from emukit.core.loop.model_updaters import FixedIntervalUpdater
 
 import GPy
 import click
@@ -14,8 +15,10 @@ from GPy.util.normalizer import Standardize
 from emukit.core import ContinuousParameter, DiscreteParameter, ParameterSpace
 from emukit.core.initial_designs.latin_design import LatinDesign
 from emukit.core.interfaces import IModel
-from emukit.experimental_design.acquisitions import ModelVariance, \
-    IntegratedVarianceReduction
+from emukit.experimental_design.acquisitions import (
+    ModelVariance,
+    IntegratedVarianceReduction,
+)
 from emukit.model_wrappers import GPyModelWrapper
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 
@@ -23,20 +26,44 @@ from custom_experimental_design_loop import CustomExperimentalDesignLoop
 from dataset import (
     extend_train_data,
     get_air_pollutant_level,
-    get_batch_air_pollutant_levels, INPUTS_DIR, get_cached_air_pollution_data,
+    get_batch_air_pollutant_levels,
+    INPUTS_DIR,
+    get_cached_air_pollution_data,
 )
 from dataset import get_cached_openweather_data
 
 
-def get_model(train_x: npt.ArrayLike, train_y: npt.ArrayLike):
+def get_model(
+    train_x: npt.ArrayLike, train_y: npt.ArrayLike, kernel_name: str = "Matern52"
+):
     num_input_parameters = train_x.shape[1]
-    kernel = GPy.kern.Matern52(num_input_parameters)
+
+    if kernel_name == "RBF":
+        kernel = GPy.kern.RBF(num_input_parameters)
+    elif kernel_name == "Matern52":
+        kernel = GPy.kern.Matern52(num_input_parameters)
+    elif kernel_name == "Linear":
+        kernel = GPy.kern.Linear(num_input_parameters)
+    elif kernel_name == "Custom1":
+        rbf_kernel = GPy.kern.RBF(input_dim=num_input_parameters)
+        matern52_kernel = GPy.kern.Matern52(
+            input_dim=num_input_parameters,
+        )
+        kernel = rbf_kernel + matern52_kernel
+    elif kernel_name == "Custom2":
+        linear_kernel = GPy.kern.Linear(input_dim=num_input_parameters)
+        matern52_kernel = GPy.kern.Matern52(
+            input_dim=num_input_parameters,
+        )
+
+        kernel = linear_kernel + matern52_kernel
+
     model_gpy = GPRegression(train_x, train_y, kernel, normalizer=Standardize())
     return GPyModelWrapper(model_gpy)
 
 
 def get_parameter_space(
-        input_bounds: dict[str, tuple[float, float]], climate_variables: list[str]
+    input_bounds: dict[str, tuple[float, float]], climate_variables: list[str]
 ):
     parameter_spaces = [
         ContinuousParameter(name, min_bound, max_bound)
@@ -54,12 +81,12 @@ def read_sample_locations_air_pollution(path) -> pd.DataFrame:
 
 
 def run_bayes_optimization(
-        model: IModel,
-        parameter_space: ParameterSpace,
-        acquisition_func: ModelVariance,
-        batch_size=1,
-        max_iterations: int = 30,
-        climate_variables: list[str] = [],
+    model: IModel,
+    parameter_space: ParameterSpace,
+    acquisition_func: ModelVariance,
+    batch_size=1,
+    max_iterations: int = 30,
+    climate_variables: list[str] = [],
 ):
     expdesign_loop = CustomExperimentalDesignLoop(
         model=model,
@@ -74,9 +101,9 @@ def run_bayes_optimization(
 
 
 def evaluate_model(
-        y_pred: npt.ArrayLike,
-        y_true: npt.ArrayLike,
-        metric: Literal["MAE", "MSE", "RMSE"] = "MAE",
+    y_pred: npt.ArrayLike,
+    y_true: npt.ArrayLike,
+    metric: Literal["MAE", "MSE", "RMSE"] = "MAE",
 ) -> float:
     if metric == "MAE":
         return mean_absolute_error(y_true, y_pred)
@@ -99,16 +126,22 @@ def plot_results(mean, uncertainty, coords, observations):
     ax1.set_title("Mean PM2.5 Concentrations")
     ax1.set_xlabel("Longitude")
     ax1.set_ylabel("Latitude")
-    cs1 = ax1.contourf(coords[:, 0].reshape((num_samples, num_samples)),
-                       coords[:, 1].reshape((num_samples, num_samples)), mean)
+    cs1 = ax1.contourf(
+        coords[:, 0].reshape((num_samples, num_samples)),
+        coords[:, 1].reshape((num_samples, num_samples)),
+        mean,
+    )
     ax1.scatter(observations[:, 0], observations[:, 1], c="red", marker="o")
     plt.colorbar(cs1, ax=ax1)
 
     ax2.set_title("Uncertainty in estimation")
     ax2.set_xlabel("Longitude")
     ax2.set_ylabel("Latitude")
-    cs2 = ax2.contourf(coords[:, 0].reshape((num_samples, num_samples)),
-                       coords[:, 1].reshape((num_samples, num_samples)), uncertainty)
+    cs2 = ax2.contourf(
+        coords[:, 0].reshape((num_samples, num_samples)),
+        coords[:, 1].reshape((num_samples, num_samples)),
+        uncertainty,
+    )
     ax2.scatter(observations[:, 0], observations[:, 1], c="red", marker="o")
     plt.colorbar(cs2, ax=ax2)
     fig.suptitle("Simple Gaussian Process Model for PM2.5 Concentrations")
@@ -117,10 +150,15 @@ def plot_results(mean, uncertainty, coords, observations):
     plt.show()
 
 
-def process_results(model: IModel, observations: np.ndarray, num_samples: int,
-                    climate_variables: list[str] = [], plot_enabled: bool = True):
-    model_inputs = get_cached_openweather_data(num_samples ** 2, climate_variables)
-    ground_truth = get_cached_air_pollution_data(num_samples ** 2)
+def process_results(
+    model: IModel,
+    observations: np.ndarray,
+    num_samples: int,
+    climate_variables: list[str] = [],
+    plot_enabled: bool = True,
+):
+    model_inputs = get_cached_openweather_data(num_samples**2, climate_variables)
+    ground_truth = get_cached_air_pollution_data(num_samples**2)
 
     mean, uncertainty = model.predict(model_inputs)
 
@@ -139,7 +177,7 @@ def run_basic_gp_regression(sample_locations_air_pollution_df: pd.DataFrame):
 
     filtered_df = sample_locations_air_pollution_df[
         sample_locations_air_pollution_df["datetime"] == "2023-12-01 17:00:00+00:00"
-        ]
+    ]
     train_x = filtered_df[["latitude", "longitude"]].to_numpy()
     train_y = np.expand_dims(filtered_df["pm2_5"].to_numpy(), axis=1)
 
@@ -160,14 +198,26 @@ def process_items(ctx, param, value):
 
 
 @click.command()
-@click.option("--climate_variables", callback=process_items, required=False, )
+@click.option(
+    "--climate_variables",
+    callback=process_items,
+    required=False,
+)
 @click.option("--num_samples", default=5)
 @click.option("--plotting/--no-plotting", default=True)
-@click.option("--acquisition_function",
-              type=click.Choice(["ModelVariance", "IVR"], case_sensitive=False),
-              default="ModelVariance")
-def main(climate_variables: Optional[list[str]], num_samples: int, plotting: bool,
-         acquisition_function: str):
+@click.option(
+    "--acquisition_function",
+    type=click.Choice(["ModelVariance", "IVR"], case_sensitive=False),
+    default="ModelVariance",
+)
+@click.option("--kernel_name", default="Matern52")
+def main(
+    climate_variables: Optional[list[str]],
+    num_samples: int,
+    plotting: bool,
+    acquisition_function: str,
+    kernel_name: str,
+):
     if not climate_variables:
         climate_variables = []
 
@@ -198,21 +248,20 @@ def main(climate_variables: Optional[list[str]], num_samples: int, plotting: boo
 
     design = LatinDesign(parameter_space)
 
-    initial_num_data_points = 5
-    train_x = design.get_samples(initial_num_data_points)
+    train_x = design.get_samples(num_samples)
 
     # Modify train_x to include input parameters
     train_x = extend_train_data(train_x[:, :2], climate_variables)
     train_y = get_batch_air_pollutant_levels(train_x[:, :2])
 
-    model = get_model(train_x=train_x, train_y=train_y)
+    model = get_model(train_x=train_x, train_y=train_y, kernel_name=kernel_name)
 
     parameter_space = get_parameter_space(bounds, climate_variables=climate_variables)
 
     if acquisition_function == "IVR":
-        acquisition_func = IntegratedVarianceReduction(model=model,
-                                                       space=parameter_space,
-                                                       num_monte_carlo_points=10_000)
+        acquisition_func = IntegratedVarianceReduction(
+            model=model, space=parameter_space, num_monte_carlo_points=10_000
+        )
     else:
         acquisition_func = ModelVariance(model=model)
 
@@ -227,8 +276,9 @@ def main(climate_variables: Optional[list[str]], num_samples: int, plotting: boo
         results.loop_state.X[:, :2],
         200,
         climate_variables=climate_variables,
-        plot_enabled=plotting
+        plot_enabled=plotting,
     )
+    return mae
 
 
 if __name__ == "__main__":
