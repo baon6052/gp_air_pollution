@@ -48,40 +48,6 @@ class CustomModelFreeMonteCarloSensitivity(ModelFreeMonteCarloSensitivity):
         self.main_sample = data[main_idx]
         self.fixing_sample = data[fixing_idx]
 
-    # def saltelli_estimators(
-    #         self,
-    #         f_main_sample: np.ndarray,
-    #         f_fixing_sample: np.ndarray,
-    #         f_new_fixing_sample: np.ndarray,
-    #         num_monte_carlo_points: int,
-    #         total_mean: np.float64,
-    #         total_variance: np.float64,
-    # ) -> tuple:
-    #     """
-    #     Saltelli estimators of the total mean and variance
-    #     """
-    #
-    #     variable_main_variance = (
-    #             sum(f_main_sample * f_new_fixing_sample) / (num_monte_carlo_points - 1)
-    #             - total_mean ** 2
-    #     )
-    #     variable_total_variance = (
-    #             total_variance
-    #             - sum(f_fixing_sample * f_new_fixing_sample) / (
-    #                         num_monte_carlo_points - 1)
-    #             + total_mean ** 2
-    #     )
-    #     return variable_main_variance, variable_total_variance
-    #
-    # def compute_statistics(self, sample: np.ndarray) -> tuple:
-    #     """
-    #     Computes mean and variance of a sample
-    #
-    #     :param sample: A sample to compute statistics for.
-    #     :return: A tuple (mean, variance).
-    #     """
-    #     return sample.mean(), sample.var()
-    #
     def compute_effects(
             self,
             main_sample: np.ndarray = None,
