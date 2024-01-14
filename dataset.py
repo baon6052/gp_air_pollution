@@ -2,7 +2,7 @@ import csv
 import os
 from datetime import datetime, timedelta
 from pathlib import Path
-
+import time
 import geopandas as gpd
 import numpy as np
 import numpy.typing as npt
@@ -14,7 +14,7 @@ from shapely.geometry import MultiPoint, Point
 CWD = Path.cwd()
 DATA_DIR = Path(CWD, "data")
 OUTPUTS_DIR = Path(DATA_DIR, "outputs")
-API_KEY = os.environ["API_KEY"]
+API_KEY = "ac83f92d098798d935bb5b75cb378802"  # "ac83f92d098798d935bb5b75cb378802"  # 84bec9a1ca5c364023b8e490b7fc3547#os.environ["API_KEY"]
 INPUTS_DIR = Path(DATA_DIR, "inputs")
 
 TIME = datetime(2023, 12, 1, 17)
@@ -29,30 +29,6 @@ CLIMATE_VARS = [
     "wind_deg",
     "wind_speed",
 ]
-
-
-def get_batch_air_pollutant_levels(coordinates: npt.ArrayLike) -> npt.ArrayLike:
-    air_pollutant_levels = []
-
-    for coord in coordinates:
-        air_pollutant_level = get_air_pollutant_level(coord)
-        air_pollutant_levels.append(air_pollutant_level)
-
-    return np.squeeze(np.array(air_pollutant_levels), axis=1)
-
-
-def get_batch_air_pollutant_data(coordinates: npt.ArrayLike) -> npt.ArrayLike:
-    columns = ['latitude', 'longitude', 'co', 'no', 'no2', 'o3', 'so2', 'pm2_5', 'pm10',
-               'nh3']
-    air_pollutant_data = []
-
-    for coord in coordinates:
-        point = Point(coord[0], coord[1])
-        df = get_air_pollution_data(point)
-        reading = df[df["datetime"] == str(TIME)][columns]
-        air_pollutant_data.append(reading)
-
-    return air_pollutant_data
 
 
 def convert_multipoint_to_point(multipoint: MultiPoint):
@@ -93,7 +69,7 @@ def local_to_utc(local_datetime, local_timezone="Europe/London", timestamp=True)
 
 
 def utc_to_local(
-        utc_timestamp, local_timezone="Europe/London", timestamp=True
+    utc_timestamp, local_timezone="Europe/London", timestamp=True
 ) -> int | datetime:
     """
     Convert a UTC timestamp to a local time datetime object.
@@ -120,96 +96,20 @@ def utc_to_local(
         return local_datetime
 
 
-def get_climate_data(longitude_coordinate: float, latitude_coordinate: float):
-    API_KEY = "84bec9a1ca5c364023b8e490b7fc3547"
-    base_url = "http://api.openweathermap.org/data/2.5/air_pollution/history"
-    local_timezone = "Europe/London"
-
-    start_date = datetime(2023, 12, 1)
-    end_date = start_date + timedelta(days=1)
-
-    dfs = []
-
-    current_date = start_date
-    while current_date < end_date:
-        start_timestamp = local_to_utc(current_date)
-        end_timestamp = local_to_utc(current_date + timedelta(days=1))
-
-        response = requests.get(
-            f"{base_url}?lat={latitude_coordinate}&lon={longitude_coordinate}&start={start_timestamp}&end={end_timestamp}&appid={API_KEY}"
-        )
-
-
-def get_air_pollution_data(geometry: Point) -> pd.DataFrame:
-    latitude, longitude = geometry.coords[0]
-    API_KEY = "84bec9a1ca5c364023b8e490b7fc3547"
-    base_url = "http://api.openweathermap.org/data/2.5/air_pollution/history"
-    local_timezone = "Europe/London"
-
-    start_date = datetime(2023, 12, 1)
-    end_date = start_date + timedelta(days=1)
-
-    dfs = []
-
-    current_date = start_date
-    while current_date < end_date:
-        start_timestamp = local_to_utc(current_date)
-        end_timestamp = local_to_utc(current_date + timedelta(days=1))
-
-        response = requests.get(
-            f"{base_url}?lat={latitude}&lon={longitude}&start={start_timestamp}&end={end_timestamp}&appid={API_KEY}"
-        )
-        if response.status_code == 200:
-            daily_data = response.json()["list"]
-            daily_df = pd.DataFrame(daily_data)
-            daily_df["datetime"] = (
-                daily_df["dt"]
-                .apply(lambda date: utc_to_local(date, timestamp=False))
-                .to_list()
-            )
-            daily_df["datetime_timestamp"] = (
-                daily_df["dt"]
-                .apply(lambda date: utc_to_local(date, timestamp=True))
-                .to_list()
-            )
-            daily_df = daily_df.drop(columns=["dt"])
-            daily_df["latitude"] = latitude
-            daily_df["longitude"] = longitude
-            dfs.append(daily_df)
-
-        current_date += timedelta(days=1)
-
-    weekly_df = pd.concat(dfs)
-    expanded_df = weekly_df["components"].apply(pd.Series)
-    # You can then concatenate these new columns back to your original DataFrame
-    df = pd.concat([weekly_df.drop(["components"], axis=1), expanded_df], axis=1)
-    df = df.drop(columns=["main"])
-    return df
-
-
-def get_data_openweathermap(path):
-    path = Path(INPUTS_DIR, "sample_locations.geojson")
-    sample_locations_gdf = gpd.read_file(path)
-    sample_locations_gdf["geometry"] = sample_locations_gdf["geometry"].apply(
-        convert_multipoint_to_point
-    )
-    list_of_dfs = sample_locations_gdf.apply(
-        lambda row: get_air_pollution_data(row["geometry"]), axis=1
-    ).to_list()
-    large_df = pd.concat(list_of_dfs, ignore_index=True)
-
-
 def get_climate_data(
-        coordinates: np.array,
-        climate_variables: list[str],
+    coordinates: np.array,
+    climate_variables: list[str],
 ) -> pd.DataFrame:
     base_url = "https://history.openweathermap.org/data/2.5/history/city"
     start_timestamp = int(TIME.timestamp())
     end_timestamp = int(TIME.timestamp())
 
-    climate_variable_data = {k: [] for k in climate_variables}
+    l = ["latitude", "longitude"]
+    l.extend(climate_variables)
+    climate_variable_data = {k: [] for k in l}
 
     for coord in coordinates:
+        print(f"Finished: {coordinates.index(coord)}/{len(coordinates)}")
         latitude = coord[0]
         longitude = coord[1]
         response = requests.get(
@@ -220,6 +120,8 @@ def get_climate_data(
             data = response.json()["list"][
                 0
             ]  # will only be one because its for a specific hour I think
+            climate_variable_data["latitude"].append(latitude)
+            climate_variable_data["longitude"].append(longitude)
             for climate_var in climate_variables:
                 if climate_var in [
                     "temp",
@@ -238,14 +140,44 @@ def get_climate_data(
                     climate_variable_data[climate_var].append(
                         data["clouds"][climate_var.split("_")[1]]
                     )  # only accepts all
-    arrays = [
-        np.array(climate_variable_data[key]) for key in climate_variable_data.keys()
-    ]
-    return np.vstack(arrays).T
+    # arrays = [
+    #     np.array(climate_variable_data[key]) for key in climate_variable_data.keys()
+    # ]
+
+    df = pd.DataFrame(climate_variable_data)
+
+    return df
+
+
+def get_air_pollution_data(coordinates: Point) -> pd.DataFrame:
+    base_url = "http://api.openweathermap.org/data/2.5/air_pollution/history"
+
+    start_timestamp = int(TIME.timestamp())
+    end_timestamp = int(TIME.timestamp())
+
+    all_data = []
+    for coord in coordinates:
+        latitude = coord[0]
+        longitude = coord[1]
+
+        response = requests.get(
+            f"{base_url}?lat={latitude}&lon={longitude}&start={start_timestamp}&end={end_timestamp}&appid={API_KEY}"
+        )
+
+        if response.status_code == 200:
+            data = {}
+            response_data = response.json()["list"][0]
+            data["latitude"] = latitude
+            data["longitude"] = longitude
+            data["timestamp"] = start_timestamp
+            data.update(response_data["components"])
+            all_data.append(data)
+    df = pd.DataFrame(all_data)
+    return df
 
 
 def extend_train_data(
-        coordinates: np.ndarray, climate_variables: list[str]
+    coordinates: np.ndarray, climate_variables: list[str]
 ) -> np.ndarray:
     if not climate_variables:
         return coordinates
@@ -257,19 +189,11 @@ def extend_train_data(
     return train_data
 
 
-def get_air_pollutant_level(coords: np.ndarray) -> np.ndarray:
-    """
-    (latitude, long) -> pollutant level for time
-    """
-    point = Point(coords[0], coords[1])
-    df = get_air_pollution_data(point)
-    return np.expand_dims(df[df["datetime"] == str(TIME)]["pm2_5"].values, axis=1)
-
-
-def get_cached_openweather_data(num_samples: int | None = None,
-                                climate_variables: list[str] = []) -> np.array:
+def get_cached_openweather_data(
+    num_samples: int | None = None, climate_variables: list[str] = []
+) -> np.array:
     cached_data = []
-    columns = ["longitude", "latitude"]
+    columns = ["latitude", "longitude"]
     columns.extend(climate_variables)
 
     with open("data/cached_openweather_data.csv", "r", newline="") as csvfile:
@@ -280,13 +204,15 @@ def get_cached_openweather_data(num_samples: int | None = None,
                     break
                 num_samples -= 1
 
-            cached_data.append(np.array(
-                [float(value) for key, value in row.items() if key in columns]))
+            cached_data.append(
+                np.array([float(value) for key, value in row.items() if key in columns])
+            )
     return np.array(cached_data)
 
 
-def get_cached_air_pollution_data(num_samples: int | None,
-                                  columns: list[str] = ["pm2_5"]) -> np.ndarray:
+def get_cached_air_pollution_data(
+    num_samples: int | None, columns: list[str] = ["pm2_5"]
+) -> np.ndarray:
     df = pd.read_csv(f"{DATA_DIR}/cached_air_pollution_data.csv")
     if not num_samples:
         return np.array([])
@@ -294,70 +220,20 @@ def get_cached_air_pollution_data(num_samples: int | None,
     return df[:num_samples][columns].values
 
 
-def setup_cache_data(
-        longitude_bounds: tuple[float, float],
-        latitude_bounds: tuple[float, float],
-        climate_variables: list[str] = [],
-        num_samples: int = 1000,
+def setup_cached_climate_data(
+    coordinates,
+    climate_variables: list[str] = [],
 ):
-    longitude_linear_space = np.linspace(
-        start=longitude_bounds[0], stop=longitude_bounds[1], num=num_samples
-    )
-    latitude_linear_space = np.linspace(
-        start=latitude_bounds[0], stop=latitude_bounds[1], num=num_samples
-    )
-
-    meshgrid = np.meshgrid(longitude_linear_space, latitude_linear_space)
-    coordinates = np.column_stack(
-        [meshgrid_dimension.ravel() for meshgrid_dimension in meshgrid]
-    )
-
-    # Call out to openweather MAP API here with list of coordinates and climate variables
-    climate_variable_data = get_climate_data(
+    climate_variable_data_df = get_climate_data(
         coordinates, climate_variables=climate_variables
     )
-    # After calling, extend coordinate data with climate variable data from API
-    # Then save all to csv below
 
-    with open("data/cached_openweather_data.csv", "w", newline="") as csvfile:
-        fieldnames = ["longitude", "latitude"]
-        fieldnames.extend(climate_variables)
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-        writer.writeheader()
-
-        for (longitude_coordinate, latitude_coordinate), climate_data in zip(
-                coordinates, climate_variable_data
-        ):
-            row_data = {
-                "longitude": longitude_coordinate,
-                "latitude": latitude_coordinate,
-            }
-
-            for i, climate_var in enumerate(climate_variables):
-                row_data[climate_var] = climate_data[i]
-            writer.writerow(row_data)
-
-
-def generate_air_pollution_cache():
-    coordinates = pd.read_csv(f"{DATA_DIR}/cached_openweather_data.csv")[
-        ['latitude', 'longitude']].values
-
-    raw_data = get_batch_air_pollutant_data(coordinates)
-
-    air_pollutant_df = pd.concat(raw_data)
-
-    air_pollutant_df.to_csv(f"{DATA_DIR}/cached_air_pollution_data.csv", index=False)
-
-
-if __name__ == "__main__":
-    longitude_bounds = (51.41728104, 51.56728104)
-    latitude_bounds = (-0.24752401, 0.12247599)
-
-    setup_cache_data(
-        longitude_bounds,
-        latitude_bounds,
-        climate_variables=CLIMATE_VARS,
-        num_samples=200,
+    climate_variable_data_df.to_csv(
+        "data/multi_thread/cached_openweather_data_remainder.csv", index=False
     )
 
-    get_cached_openweather_data()
+
+def generate_air_pollution_cache(coordinates):
+    air_pollution_df = get_air_pollution_data(coordinates)
+
+    air_pollution_df.to_csv(f"{DATA_DIR}/cached_air_pollution_data.csv", index=False)
