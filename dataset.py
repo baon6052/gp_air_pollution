@@ -274,14 +274,14 @@ def get_cached_openweather_data(num_samples: int | None = None,
 
     with open("data/cached_openweather_data.csv", "r", newline="") as csvfile:
         dict_reader = csv.DictReader(csvfile)
+
         for row in dict_reader:
-            if num_samples:
+            if num_samples is not None:
                 if num_samples == 0:
                     break
                 num_samples -= 1
 
-            cached_data.append(np.array(
-                [float(value) for key, value in row.items() if key in columns]))
+            cached_data.append(np.array([float(value) for key, value in row.items() if key in columns]))
     return np.array(cached_data)
 
 

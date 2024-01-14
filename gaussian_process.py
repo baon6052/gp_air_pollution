@@ -159,7 +159,7 @@ def process_results(
 ):
     model_inputs = get_cached_openweather_data(num_samples**2, climate_variables)
     ground_truth = get_cached_air_pollution_data(num_samples**2)
-
+    breakpoint()
     mean, uncertainty = model.predict(model_inputs)
 
     # plot the results
