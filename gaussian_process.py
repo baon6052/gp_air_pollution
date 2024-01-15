@@ -2,6 +2,7 @@ import math
 from pathlib import Path
 from typing import Literal, Optional
 from emukit.core.loop.model_updaters import FixedIntervalUpdater
+import json
 
 import GPy
 import click
@@ -109,9 +110,7 @@ def run_bayes_optimization(
     )
 
     expdesign_loop.run_loop(
-        lambda x: np.array(get_air_pollution_data(x[0].reshape(1, 2))["pm2_5"]).reshape(
-            -1, 1
-        ),
+        lambda x: get_air_pollution_data(x[0][:2].reshape(1, 2)),
         max_iterations,
     )
     return expdesign_loop
@@ -188,28 +187,34 @@ def process_results(
     if plot_enabled:
         plot_results(mean, uncertainty, model_inputs[:, :2], observations)
 
+    save_to_geojson(coordinates=model_inputs[:, :2], mean=mean, uncertainty=uncertainty)
+
     # evaluate model performance
     mae, mse, rmse = evaluate_model(mean, ground_truth)
     return mae, mse, rmse
 
 
-def run_basic_gp_regression(sample_locations_air_pollution_df: pd.DataFrame):
-    matplotlib.use("Agg")
-    GPy.plotting.change_plotting_library("matplotlib")
+def save_to_geojson(coordinates, mean, uncertainty):
+    geojson = {"type": "FeatureCollection", "features": []}
 
-    filtered_df = sample_locations_air_pollution_df[
-        sample_locations_air_pollution_df["datetime"] == "2023-12-01 17:00:00+00:00"
-    ]
-    train_x = filtered_df[["latitude", "longitude"]].to_numpy()
-    train_y = np.expand_dims(filtered_df["pm2_5"].to_numpy(), axis=1)
-
-    kernel = GPy.kern.Matern52(2)
-    model = GPy.models.GPRegression(train_x, train_y, kernel)
-    model.optimize(messages=True, max_iters=1_000)
-
-    ax = model.plot()
-    dataplot = ax["gpmean"][0]
-    dataplot.figure.savefig("model.png")
+    # Add points to the GeoJSON
+    for point, m, u in zip(coordinates, mean, uncertainty):
+        feature = {
+            "type": "Feature",
+            "properties": {
+                "mean": float(m),
+                "uncertainty": float(u),
+            },  # Empty properties, can be filled with relevant information
+            "geometry": {
+                "type": "Point",
+                "coordinates": [float(point[1]), float(point[0])],
+            },
+        }
+        geojson["features"].append(feature)
+    geojson_string = json.dumps(geojson, indent=2)
+    with open("output.geojson", "w") as file:
+        file.write(geojson_string)
+    pass
 
 
 def process_items(ctx, param, value):
@@ -232,7 +237,7 @@ def process_items(ctx, param, value):
     type=click.Choice(["ModelVariance", "IVR"], case_sensitive=False),
     default="ModelVariance",
 )
-@click.option("--kernel_name", default="Custom2")
+@click.option("--kernel_name", default="Matern52")
 @click.option("--regenerate_cache", default=False)
 def main(
     climate_variables: Optional[list[str]],
@@ -267,23 +272,26 @@ def run_model(
 
     bounds = {}
 
-    latitude_bounds = (
-        extent_gpd.MINY[
-            0
-        ],  # 50.866580,  # sample_locations_air_pollution_df.longitude.min(),
-        extent_gpd.MAXY[
-            0
-        ],  # 52.608829,  # sample_locations_air_pollution_df.longitude.max(),
-    )
+    # latitude_bounds = (
+    #     extent_gpd.MINY[
+    #         0
+    #     ],  # 50.866580,  # sample_locations_air_pollution_df.longitude.min(),
+    #     extent_gpd.MAXY[
+    #         0
+    #     ],  # 52.608829,  # sample_locations_air_pollution_df.longitude.max(),
+    # )
 
-    longitude_bounds = (
-        extent_gpd.MINX[
-            0
-        ],  # -2.173528,  # sample_locations_air_pollution_df.latitude.min(),
-        extent_gpd.MAXX[
-            0
-        ],  # 0.312971,  # sample_locations_air_pollution_df.latitude.max(),
-    )
+    # longitude_bounds = (
+    #     extent_gpd.MINX[
+    #         0
+    #     ],  # -2.173528,  # sample_locations_air_pollution_df.latitude.min(),
+    #     extent_gpd.MAXX[
+    #         0
+    #     ],  # 0.312971,  # sample_locations_air_pollution_df.latitude.max(),
+    # )
+
+    latitude_bounds = (50.866580, 52.608829)
+    longitude_bounds = (-2.173528, 0.312971)
     bounds["latitude"] = latitude_bounds
     bounds["longitude"] = longitude_bounds
 
@@ -297,12 +305,11 @@ def run_model(
         xx, yy = np.meshgrid(np.linspace(xmin, xmax, 200), np.linspace(ymin, ymax, 200))
         xc = xx.flatten()
         yc = yy.flatten()
-        # coordinates = list(zip(xc, yc))
-        # generate_air_pollution_cache(coordinates)
+        coordinates = list(zip(xc, yc))
+        generate_air_pollution_cache(coordinates)
 
-        need_df = pd.read_csv("need_df.csv")
-        coordinates = list(zip(list(need_df["latitude"]), list(need_df["longitude"])))
-        # coordinates = coordinates[8872:]
+        # need_df = pd.read_csv("need_df.csv")
+        # coordinates = list(zip(list(need_df["latitude"]), list(need_df["longitude"])))
         setup_cached_climate_data(
             coordinates,
             climate_variables=[
@@ -318,43 +325,42 @@ def run_model(
             ],
         )
 
-    # parameter_space = get_parameter_space(bounds, climate_variables=[])
+    parameter_space = get_parameter_space(bounds, climate_variables=[])
 
-    # design = LatinDesign(parameter_space)
+    design = LatinDesign(parameter_space)
 
-    # train_x = design.get_samples(num_samples)
+    train_x = design.get_samples(num_samples)
 
-    # # Modify train_x to include input parameters
-    # train_x = extend_train_data(train_x[:, :2], climate_variables)
-    # train_y = np.array(get_air_pollution_data(train_x[:, :2])["pm2_5"]).reshape(-1, 1)
-    # # train_y = get_batch_air_pollutant_levels()
+    train_x = extend_train_data(train_x[:, :2], climate_variables)
 
-    # model = get_model(train_x=train_x, train_y=train_y, kernel_name=kernel_name)
+    train_y = get_air_pollution_data(train_x[:, :2])
 
-    # parameter_space = get_parameter_space(bounds, climate_variables=climate_variables)
+    model = get_model(train_x=train_x, train_y=train_y, kernel_name=kernel_name)
 
-    # if acquisition_function == "IVR":
-    #     acquisition_func = IntegratedVarianceReduction(
-    #         model=model, space=parameter_space, num_monte_carlo_points=10_000
-    #     )
-    # else:
-    #     acquisition_func = ModelVariance(model=model)
+    parameter_space = get_parameter_space(bounds, climate_variables=climate_variables)
 
-    # results = run_bayes_optimization(
-    #     model,
-    #     parameter_space,
-    #     acquisition_func,
-    #     climate_variables=climate_variables,
-    #     max_iterations=30,
-    # )
-    # mae, mse, rmse = process_results(
-    #     model,
-    #     model.X[:, :2],
-    #     200,
-    #     climate_variables=climate_variables,
-    #     plot_enabled=plotting,
-    # )
-    # return mae, mse, rmse, results.model, parameter_space
+    if acquisition_function == "IVR":
+        acquisition_func = IntegratedVarianceReduction(
+            model=model, space=parameter_space, num_monte_carlo_points=10_000
+        )
+    else:
+        acquisition_func = ModelVariance(model=model)
+
+    results = run_bayes_optimization(
+        model,
+        parameter_space,
+        acquisition_func,
+        climate_variables=climate_variables,
+        max_iterations=30,
+    )
+    mae, mse, rmse = process_results(
+        model,
+        model.X[:, :2],
+        200,
+        climate_variables=climate_variables,
+        plot_enabled=plotting,
+    )
+    return mae, mse, rmse, results.model, parameter_space
 
 
 if __name__ == "__main__":

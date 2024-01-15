@@ -1,42 +1,83 @@
 from pathlib import Path
+import itertools
 
-from gaussian_process import main
+from gaussian_process import main, run_model
 from dataset import OUTPUTS_DIR
 import numpy as np
 import pandas as pd
 
+# climate_variables = [
+#     "feels_like",
+#     "temp",
+#     "temp_min",
+#     "temp_max",
+#     "humidity",
+#     "clouds_all",
+#     "wind_deg",
+#     "pressure",
+#     "wind_speed",
+# ]
+
 climate_variables = [
     "feels_like",
+    "temp_max",
     "temp",
     "temp_min",
-    "temp_max",
-    "humidity",
-    "clouds_all",
-    "wind_deg",
-    "pressure",
     "wind_speed",
+    "wind_deg",
+    "clouds_all",
+    "humidity",
+    "pressure",
+]
+
+kernel_names = [
+    "RBF",
+    "Matern52",
+    "Linear",
+    "Exponential",
+    "Custom1",
+    "Custom2",
+    "Custom3",
 ]
 
 
 climate_variables_iterator = [
     climate_variables[:i] for i in range(len(climate_variables))
 ]
+
+metrics = itertools.product(climate_variables_iterator, kernel_names)
 n_of_runs = 5
-results = {k: {} for k in range(1, len(climate_variables_iterator) + 1)}
-for j, climate_variables in enumerate(climate_variables_iterator):
-    results[j + 1]["climate_variables"] = climate_variables
-    results[j + 1]["mae_list"] = []
+results = {str(cv): {} for cv in climate_variables_iterator}
+for j, (climate_variables, kernel_name) in enumerate(metrics):
+    results[str(climate_variables)][kernel_name] = {}
+    results[str(climate_variables)][kernel_name]["mae_list"] = []
+    results[str(climate_variables)][kernel_name]["mse_list"] = []
+    results[str(climate_variables)][kernel_name]["rmse_list"] = []
     for i in range(n_of_runs):
-        mae = main(
+        mae, mse, rmse, _, _ = run_model(
             climate_variables=climate_variables,
             plotting=False,
             num_samples=5,
             acquisition_function="ModelVariance",
+            kernel_name=kernel_name,
         )
-        results[j + 1]["mae_list"].append(mae)
-    results[j + 1]["mean_mae"] = np.round(np.mean(results[j + 1]["mae_list"]), 4)
-    results[j + 1]["std_mae"] = np.round(np.std(results[j + 1]["mae_list"]), 4)
-    print(f"Finished: {climate_variables}")
+
+        results[str(climate_variables)][kernel_name][f"mae_list"].append(mae)
+        results[str(climate_variables)][kernel_name][f"mse_list"].append(mse)
+        results[str(climate_variables)][kernel_name][f"rmse_list"].append(rmse)
+    for metric in ["mae", "mse", "rmse"]:
+        results[str(climate_variables)][kernel_name][f"mean_{metric}"] = np.round(
+            np.mean(results[str(climate_variables)][kernel_name][f"{metric}_list"]), 4
+        )
+        results[str(climate_variables)][kernel_name][f"std_{metric}"] = np.round(
+            np.std(results[str(climate_variables)][kernel_name][f"{metric}_list"]), 4
+        )
+    print(f"Finished: {climate_variables}-{kernel_name}")
 
 df = pd.DataFrame(results).T
-df.to_csv(Path(OUTPUTS_DIR, "climate_variables_performance3.csv"))
+
+df.to_csv(Path(OUTPUTS_DIR, "climate_variables_performance_large_area.csv"))
+df.to_hdf(
+    Path(OUTPUTS_DIR, "climate_variables_performance_large_area.h5"),
+    key="climate_variables_performance4",
+)

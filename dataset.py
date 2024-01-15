@@ -14,7 +14,7 @@ from shapely.geometry import MultiPoint, Point
 CWD = Path.cwd()
 DATA_DIR = Path(CWD, "data")
 OUTPUTS_DIR = Path(DATA_DIR, "outputs")
-API_KEY = "ac83f92d098798d935bb5b75cb378802"  # "ac83f92d098798d935bb5b75cb378802"  # 84bec9a1ca5c364023b8e490b7fc3547#os.environ["API_KEY"]
+API_KEY = "18ea55dba598f506a699783efcc2b07a"  # "ac83f92d098798d935bb5b75cb378802"  # 84bec9a1ca5c364023b8e490b7fc3547#os.environ["API_KEY"]
 INPUTS_DIR = Path(DATA_DIR, "inputs")
 
 TIME = datetime(2023, 12, 1, 17)
@@ -99,6 +99,7 @@ def utc_to_local(
 def get_climate_data(
     coordinates: np.array,
     climate_variables: list[str],
+    return_df: bool = False,
 ) -> pd.DataFrame:
     base_url = "https://history.openweathermap.org/data/2.5/history/city"
     start_timestamp = int(TIME.timestamp())
@@ -109,7 +110,7 @@ def get_climate_data(
     climate_variable_data = {k: [] for k in l}
 
     for coord in coordinates:
-        print(f"Finished: {coordinates.index(coord)}/{len(coordinates)}")
+        # print(f"Finished: {list(coordinates).index(coord)}/{len(list(coordinates))}")
         latitude = coord[0]
         longitude = coord[1]
         response = requests.get(
@@ -143,13 +144,14 @@ def get_climate_data(
     # arrays = [
     #     np.array(climate_variable_data[key]) for key in climate_variable_data.keys()
     # ]
-
     df = pd.DataFrame(climate_variable_data)
+    if return_df:
+        return df
+    else:
+        return np.array(df.iloc[:, 2:].values.tolist())
 
-    return df
 
-
-def get_air_pollution_data(coordinates: Point) -> pd.DataFrame:
+def get_air_pollution_data(coordinates: Point, return_df: bool = False) -> pd.DataFrame:
     base_url = "http://api.openweathermap.org/data/2.5/air_pollution/history"
 
     start_timestamp = int(TIME.timestamp())
@@ -173,7 +175,10 @@ def get_air_pollution_data(coordinates: Point) -> pd.DataFrame:
             data.update(response_data["components"])
             all_data.append(data)
     df = pd.DataFrame(all_data)
-    return df
+    if return_df:
+        return df
+    else:
+        return np.array(df[["pm2_5"]].values.tolist())
 
 
 def extend_train_data(
@@ -225,15 +230,13 @@ def setup_cached_climate_data(
     climate_variables: list[str] = [],
 ):
     climate_variable_data_df = get_climate_data(
-        coordinates, climate_variables=climate_variables
+        coordinates, climate_variables=climate_variables, return_df=True
     )
 
-    climate_variable_data_df.to_csv(
-        "data/multi_thread/cached_openweather_data_remainder.csv", index=False
-    )
+    climate_variable_data_df.to_csv("data/cached_openweather_data.csv", index=False)
 
 
 def generate_air_pollution_cache(coordinates):
-    air_pollution_df = get_air_pollution_data(coordinates)
+    air_pollution_df = get_air_pollution_data(coordinates, return_df=True)
 
     air_pollution_df.to_csv(f"{DATA_DIR}/cached_air_pollution_data.csv", index=False)
