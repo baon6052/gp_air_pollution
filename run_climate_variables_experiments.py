@@ -1,10 +1,11 @@
-from pathlib import Path
 import itertools
+from pathlib import Path
 
-from gaussian_process import main, run_model
-from dataset import OUTPUTS_DIR
 import numpy as np
 import pandas as pd
+
+from dataset import OUTPUTS_DIR
+from gaussian_process import main, run_model
 
 # climate_variables = [
 #     "feels_like",
@@ -66,11 +67,21 @@ for j, (climate_variables, kernel_name) in enumerate(metrics):
         results[str(climate_variables)][kernel_name][f"mse_list"].append(mse)
         results[str(climate_variables)][kernel_name][f"rmse_list"].append(rmse)
     for metric in ["mae", "mse", "rmse"]:
-        results[str(climate_variables)][kernel_name][f"mean_{metric}"] = np.round(
-            np.mean(results[str(climate_variables)][kernel_name][f"{metric}_list"]), 4
+        results[str(climate_variables)][kernel_name][
+            f"mean_{metric}"
+        ] = np.round(
+            np.mean(
+                results[str(climate_variables)][kernel_name][f"{metric}_list"]
+            ),
+            4,
         )
-        results[str(climate_variables)][kernel_name][f"std_{metric}"] = np.round(
-            np.std(results[str(climate_variables)][kernel_name][f"{metric}_list"]), 4
+        results[str(climate_variables)][kernel_name][
+            f"std_{metric}"
+        ] = np.round(
+            np.std(
+                results[str(climate_variables)][kernel_name][f"{metric}_list"]
+            ),
+            4,
         )
     print(f"Finished: {climate_variables}-{kernel_name}")
 

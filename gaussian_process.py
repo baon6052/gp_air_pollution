@@ -1,45 +1,46 @@
+import json
 import math
 from pathlib import Path
 from typing import Literal, Optional
-from emukit.core.loop.model_updaters import FixedIntervalUpdater
-import json
 
-import GPy
 import click
+import geopandas as gpd
+import GPy
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
-from GPy.models import GPRegression
-from GPy.util.normalizer import Standardize
+import shapely
 from emukit.core import ContinuousParameter, DiscreteParameter, ParameterSpace
 from emukit.core.initial_designs.latin_design import LatinDesign
 from emukit.core.interfaces import IModel
+from emukit.core.loop.model_updaters import FixedIntervalUpdater
 from emukit.experimental_design.acquisitions import (
-    ModelVariance,
     IntegratedVarianceReduction,
+    ModelVariance,
 )
 from emukit.model_wrappers import GPyModelWrapper
-from sklearn.metrics import mean_squared_error, mean_absolute_error
+from GPy.models import GPRegression
+from GPy.util.normalizer import Standardize
+from sklearn.metrics import mean_absolute_error, mean_squared_error
 
 from custom_experimental_design_loop import CustomExperimentalDesignLoop
 from dataset import (
+    INPUTS_DIR,
     extend_train_data,
     generate_air_pollution_cache,
-    INPUTS_DIR,
-    get_cached_air_pollution_data,
     get_air_pollution_data,
+    get_cached_air_pollution_data,
     get_cached_openweather_data,
     setup_cached_climate_data,
 )
 
-import shapely
-import geopandas as gpd
-
 
 def get_model(
-    train_x: npt.ArrayLike, train_y: npt.ArrayLike, kernel_name: str = "Matern52"
+    train_x: npt.ArrayLike,
+    train_y: npt.ArrayLike,
+    kernel_name: str = "Matern52",
 ):
     num_input_parameters = train_x.shape[1]
 
@@ -83,7 +84,9 @@ def get_parameter_space(
         for name, (min_bound, max_bound) in input_bounds.items()
     ]
 
-    constant_spaces = [DiscreteParameter(name, [1]) for name in climate_variables]
+    constant_spaces = [
+        DiscreteParameter(name, [1]) for name in climate_variables
+    ]
     parameter_spaces.extend(constant_spaces)
 
     return ParameterSpace(parameter_spaces)
@@ -152,7 +155,7 @@ def plot_results(mean, uncertainty, coords, observations):
         coords[:, 1].reshape((num_samples, num_samples)),
         mean,
     )
-    ax1.scatter(observations[:, 0], observations[:, 1], c="red", marker="o")
+    # ax1.scatter(observations[:, 0], observations[:, 1], c="red", marker="o")
     plt.colorbar(cs1, ax=ax1)
 
     ax2.set_title("Uncertainty in estimation")
@@ -177,9 +180,25 @@ def process_results(
     num_samples: int,
     climate_variables: list[str] = [],
     plot_enabled: bool = True,
+    add_multifidelity_column: bool = False,
+    test_data: list[list[float]] = [],
 ):
-    model_inputs = get_cached_openweather_data(num_samples**2, climate_variables)
+    if test_data:
+        model_inputs = test_data
+    else:
+        model_inputs, _ = get_cached_openweather_data(
+            num_samples**2, climate_variables
+        )
+
     ground_truth = get_cached_air_pollution_data(num_samples**2)
+
+    if add_multifidelity_column:
+        high_fidelity_column_and_values = np.array(
+            [[0] for _ in range(model_inputs.shape[0])]
+        )
+        model_inputs = np.append(
+            model_inputs, high_fidelity_column_and_values, axis=1
+        )
 
     mean, uncertainty = model.predict(model_inputs)
 
@@ -187,7 +206,9 @@ def process_results(
     if plot_enabled:
         plot_results(mean, uncertainty, model_inputs[:, :2], observations)
 
-    save_to_geojson(coordinates=model_inputs[:, :2], mean=mean, uncertainty=uncertainty)
+    save_to_geojson(
+        coordinates=model_inputs[:, :2], mean=mean, uncertainty=uncertainty
+    )
 
     # evaluate model performance
     mae, mse, rmse = evaluate_model(mean, ground_truth)
@@ -302,7 +323,9 @@ def run_model(
             longitude_bounds[0],
             longitude_bounds[1],
         )
-        xx, yy = np.meshgrid(np.linspace(xmin, xmax, 200), np.linspace(ymin, ymax, 200))
+        xx, yy = np.meshgrid(
+            np.linspace(xmin, xmax, 200), np.linspace(ymin, ymax, 200)
+        )
         xc = xx.flatten()
         yc = yy.flatten()
         coordinates = list(zip(xc, yc))
@@ -337,7 +360,9 @@ def run_model(
 
     model = get_model(train_x=train_x, train_y=train_y, kernel_name=kernel_name)
 
-    parameter_space = get_parameter_space(bounds, climate_variables=climate_variables)
+    parameter_space = get_parameter_space(
+        bounds, climate_variables=climate_variables
+    )
 
     if acquisition_function == "IVR":
         acquisition_func = IntegratedVarianceReduction(

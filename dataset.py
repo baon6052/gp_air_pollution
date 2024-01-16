@@ -1,8 +1,10 @@
 import csv
 import os
+import random
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
-import time
+
 import geopandas as gpd
 import numpy as np
 import numpy.typing as npt
@@ -40,7 +42,9 @@ def convert_multipoint_to_point(multipoint: MultiPoint):
     return multipoint
 
 
-def local_to_utc(local_datetime, local_timezone="Europe/London", timestamp=True):
+def local_to_utc(
+    local_datetime, local_timezone="Europe/London", timestamp=True
+):
     """
     Convert a local timezone datetime into a UTC timestamp.
 
@@ -132,7 +136,9 @@ def get_climate_data(
                     "temp_min",
                     "temp_max",
                 ]:
-                    climate_variable_data[climate_var].append(data["main"][climate_var])
+                    climate_variable_data[climate_var].append(
+                        data["main"][climate_var]
+                    )
                 elif "wind" in climate_var:
                     climate_variable_data[climate_var].append(
                         data["wind"][climate_var.split("_")[1]]
@@ -151,7 +157,9 @@ def get_climate_data(
         return np.array(df.iloc[:, 2:].values.tolist())
 
 
-def get_air_pollution_data(coordinates: Point, return_df: bool = False) -> pd.DataFrame:
+def get_air_pollution_data(
+    coordinates: Point, return_df: bool = False
+) -> pd.DataFrame:
     base_url = "http://api.openweathermap.org/data/2.5/air_pollution/history"
 
     start_timestamp = int(TIME.timestamp())
@@ -195,32 +203,61 @@ def extend_train_data(
 
 
 def get_cached_openweather_data(
-    num_samples: int | None = None, climate_variables: list[str] = []
-) -> np.array:
+    num_samples: int = 0,
+    climate_variables: list[str] = [],
+    shuffle_coordinates: bool = False,
+) -> tuple[np.array, np.array]:
     cached_data = []
+    test_cached_data = []
+
     columns = ["latitude", "longitude"]
     columns.extend(climate_variables)
 
-    with open("data/cached_openweather_data.csv", "r", newline="") as csvfile:
-        dict_reader = csv.DictReader(csvfile)
-        for row in dict_reader:
-            if num_samples:
-                if num_samples == 0:
-                    break
-                num_samples -= 1
+    df = pd.read_csv(f"{DATA_DIR}/cached_openweather_data.csv")
 
+    if shuffle_coordinates:
+        df = df.sample(frac=1)
+
+    for index, row in df.iterrows():
+        if num_samples:
             cached_data.append(
-                np.array([float(value) for key, value in row.items() if key in columns])
+                np.array(
+                    [
+                        float(value)
+                        for key, value in row.items()
+                        if key in columns
+                    ]
+                )
             )
-    return np.array(cached_data)
+        else:
+            test_cached_data.append(
+                np.array(
+                    [
+                        float(value)
+                        for key, value in row.items()
+                        if key in columns
+                    ]
+                )
+            )
+
+    return np.array(cached_data), test_cached_data
 
 
 def get_cached_air_pollution_data(
-    num_samples: int | None, columns: list[str] = ["pm2_5"]
+    num_samples: int | None,
+    columns: list[str] = ["pm2_5"],
+    coordinates: list[tuple[float, float]] | None = None,
 ) -> np.ndarray:
     df = pd.read_csv(f"{DATA_DIR}/cached_air_pollution_data.csv")
     if not num_samples:
         return np.array([])
+
+    if coordinates is not None:
+        df["lat_long"] = list(zip(df.latitude, df.longitude))
+        filtered_df = df[df["lat_long"].isin(coordinates)]
+        df = filtered_df.drop("lat_long", axis=1)
+
+        # return df[:num_samples][columns].values
 
     return df[:num_samples][columns].values
 
@@ -233,10 +270,14 @@ def setup_cached_climate_data(
         coordinates, climate_variables=climate_variables, return_df=True
     )
 
-    climate_variable_data_df.to_csv("data/cached_openweather_data.csv", index=False)
+    climate_variable_data_df.to_csv(
+        "data/cached_openweather_data.csv", index=False
+    )
 
 
 def generate_air_pollution_cache(coordinates):
     air_pollution_df = get_air_pollution_data(coordinates, return_df=True)
 
-    air_pollution_df.to_csv(f"{DATA_DIR}/cached_air_pollution_data.csv", index=False)
+    air_pollution_df.to_csv(
+        f"{DATA_DIR}/cached_air_pollution_data.csv", index=False
+    )
