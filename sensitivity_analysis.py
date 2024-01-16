@@ -20,7 +20,7 @@ def run_sensitivity_analysis():
         num_samples=5,
         plotting=False,
         acquisition_function="ModelVariance",
-        kernel_name="Matern52",
+        kernel_name="Custom2",
     )
 
     senstivity = CustomMonteCarloSensitivity(
