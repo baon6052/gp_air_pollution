@@ -76,8 +76,8 @@ for j, (climate_variables, kernel_name) in enumerate(metrics):
 
 df = pd.DataFrame(results).T
 
-df.to_csv(Path(OUTPUTS_DIR, "climate_variables_performance_large_area.csv"))
+df.to_csv(Path(OUTPUTS_DIR, "climate_variables_performance_large_area_5.csv"))
 df.to_hdf(
-    Path(OUTPUTS_DIR, "climate_variables_performance_large_area.h5"),
-    key="climate_variables_performance4",
+    Path(OUTPUTS_DIR, "climate_variables_performance_large_area_5.h5"),
+    key="climate_variables_performance_large_area_5",
 )
