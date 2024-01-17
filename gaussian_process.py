@@ -165,7 +165,7 @@ def plot_results(
 ):
     if not animation:
         fig, (ax1, ax2) = plt.subplots(
-            ncols=1, nrows=2, figsize=(12, 6), constrained_layout=True
+            ncols=2, nrows=1, figsize=(12, 6), constrained_layout=True
         )
     else:
         fig, (ax1, ax2) = plt.subplots(
