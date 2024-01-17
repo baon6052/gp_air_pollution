@@ -13,12 +13,16 @@ kernel = "Exponential"
 
 noise_multipliers = [0.1, 0.5, 1.0, 1.5]
 
-high_fidelity_percentages = [5, 10, 20, 50, 100]
-num_low_fidelity_samples = [50, 150, 200, 400]
+# high_fidelity_percentages = [5, 10, 20, 50, 100]
+# num_low_fidelity_samples = [50, 150, 200, 400]
+
+
+num_high_fidelity_samples = [1, 10, 20, 50, 100, 150, 200, 400]
+num_low_fidelity_samples = [1, 10, 20, 50, 100, 150, 200, 400]
 
 metrics = itertools.product(
     noise_multipliers,
-    high_fidelity_percentages,
+    num_high_fidelity_samples,
     num_low_fidelity_samples,
 )
 
@@ -26,18 +30,14 @@ n_of_runs = 5
 results = {}
 for j, (
     noise_multiplier,
-    high_fidelity_percentage,
+    num_high_fidelity_sample,
     num_low_fidelity_sample,
 ) in enumerate(metrics):
-    d_key = f"({noise_multiplier},{high_fidelity_percentage},{num_low_fidelity_sample})"
+    d_key = f"({noise_multiplier},{num_high_fidelity_sample},{num_low_fidelity_sample})"
     results[d_key] = {}
     results[d_key]["mae_list"] = []
     results[d_key]["mse_list"] = []
     results[d_key]["rmse_list"] = []
-
-    num_high_fidelity_sample = int(
-        num_low_fidelity_sample * high_fidelity_percentage / 100
-    )
 
     for i in range(n_of_runs):
         mae, mse, rmse = run_multifidelity_analysis(
@@ -62,13 +62,13 @@ for j, (
             4,
         )
     print(
-        f"Finished: \nnoise_multiplier {noise_multiplier}\high_fidelity_percentage {high_fidelity_percentage}\num_low_fidelity_sample {num_low_fidelity_sample}"
+        f"Finished: \nnoise_multiplier {noise_multiplier}\num_high_fidelity_sample {num_high_fidelity_sample}\num_low_fidelity_sample {num_low_fidelity_sample}"
     )
 
 df = pd.DataFrame(results).T
 
-df.to_csv(Path("exp_data", "multifidelity_experiments.csv"))
+df.to_csv(Path("exp_data", "multifidelity_experiments_rev1.csv"))
 df.to_hdf(
-    Path("exp_data", "multifidelity_experiments.h5"),
+    Path("exp_data", "multifidelity_experiments_rev1.h5"),
     key="multifidelity_experiments",
 )
