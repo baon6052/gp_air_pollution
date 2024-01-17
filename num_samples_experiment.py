@@ -9,7 +9,7 @@ import pandas as pd
 
 num_samples = [5, 10, 15, 20, 25, 30]
 
-n_of_runs = 20
+n_of_runs = 25
 results = {}
 for j, (n_sample) in enumerate(num_samples):
     results[n_sample] = {}
@@ -42,4 +42,4 @@ df = pd.DataFrame(results).T
 
 df = df.drop(columns=["mae_list", "mse_list", "rmse_list"])
 
-df.to_csv(Path(OUTPUTS_DIR, "n_samples_large_area_rev4.csv"))
+df.to_csv(Path(OUTPUTS_DIR, "n_samples13.csv"))

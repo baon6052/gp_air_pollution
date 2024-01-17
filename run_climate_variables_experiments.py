@@ -6,17 +6,6 @@ from dataset import OUTPUTS_DIR
 import numpy as np
 import pandas as pd
 
-# climate_variables = [
-#     "feels_like",
-#     "temp",
-#     "temp_min",
-#     "temp_max",
-#     "humidity",
-#     "clouds_all",
-#     "wind_deg",
-#     "pressure",
-#     "wind_speed",
-# ]
 
 climate_variables = [
     "feels_like",
@@ -39,14 +28,12 @@ kernel_names = [
     "Custom2",
     "Custom3",
 ]
-
-
-climate_variables_iterator = [
-    climate_variables[:i] for i in range(len(climate_variables))
-]
+climate_variables_iterator = []
+for i in range(len(climate_variables) + 1):
+    climate_variables_iterator.append(climate_variables[:i])
 
 metrics = itertools.product(climate_variables_iterator, kernel_names)
-n_of_runs = 5
+n_of_runs = 8
 results = {str(cv): {} for cv in climate_variables_iterator}
 for j, (climate_variables, kernel_name) in enumerate(metrics):
     results[str(climate_variables)][kernel_name] = {}
@@ -76,8 +63,8 @@ for j, (climate_variables, kernel_name) in enumerate(metrics):
 
 df = pd.DataFrame(results).T
 
-df.to_csv(Path(OUTPUTS_DIR, "climate_variables_performance_large_area_5.csv"))
+df.to_csv(Path(OUTPUTS_DIR, "climate_variables_performance_large_area_7.csv"))
 df.to_hdf(
-    Path(OUTPUTS_DIR, "climate_variables_performance_large_area_5.h5"),
-    key="climate_variables_performance_large_area_5",
+    Path(OUTPUTS_DIR, "climate_variables_performance_large_area_7.h5"),
+    key="climate_variables_performance_large_area_7",
 )
