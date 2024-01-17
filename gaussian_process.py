@@ -224,7 +224,7 @@ def process_results(
     num_samples: int,
     climate_variables: list[str] = [],
     plot_enabled: bool = True,
-    filepath: str = "gaussian_process.png",
+    filepath: str = "gaussian_process",
     vmin_mean=None,
     vmax_mean=None,
     vmin_uncert=None,
@@ -298,36 +298,75 @@ def save_to_geojson(coordinates, mean, uncertainty):
     pass
 
 
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+
+
 def create_animation(
     all_loop_state_xs_and_models,
     climate_variables,
     root_folder: str = "data/uncertainty_over_time",
 ):
     fig, (ax1, ax2) = plt.subplots(
-        ncols=2, nrows=1, figsize=(12, 6), constrained_layout=True
+        ncols=2,
+        nrows=1,
+        figsize=(12, 6),  # constrained_layout=True
     )
-    vmin_mean = 2.4
-    vmax_mean = 7.8
-    vmin_uncert = 0
-    vmax_uncert = 2.5
+    vmin_mean = None
+    vmax_mean = None
+    vmin_uncert = None
+    vmax_uncert = None
     num_samples = 200
 
+    loop_state_x, model = all_loop_state_xs_and_models[0]
+    observations = loop_state_x[:, :2]
+
+    model_inputs = get_cached_openweather_data(num_samples**2, climate_variables)
+    print(model_inputs[:, :2].shape)
+    ground_truth = get_cached_air_pollution_data(num_samples**2)
+
+    mean, uncertainty = model.predict(model_inputs)
+    div = make_axes_locatable(ax2)
+    cax = div.append_axes("right", "3%", "3%")
+    # data = np.random.rand(5, 5)
+    # im = ax1.imshow(data)
+    coords = model_inputs[:, :2]
+
+    ax2.set_title("Uncertainty in estimation")
+    ax2.set_ylabel("Latitude")
+    ax2.set_xlabel("Longitude")
+    uncertainty = uncertainty.reshape((num_samples, num_samples))
+    if vmin_uncert != None and vmax_uncert != None:
+        cs2 = ax2.contourf(
+            coords[:, 1].reshape((num_samples, num_samples)),
+            coords[:, 0].reshape((num_samples, num_samples)),
+            uncertainty,
+            vmin=vmin_uncert,
+            vmax=vmax_uncert,
+        )
+    else:
+        cs2 = ax2.contourf(
+            coords[:, 1].reshape((num_samples, num_samples)),
+            coords[:, 0].reshape((num_samples, num_samples)),
+            uncertainty,
+        )
+    ax2.scatter(observations[:, 1], observations[:, 0], c="red", marker="o")
+    cb = fig.colorbar(cs2, cax=cax)
+
     def update(frame):
-        vmin_mean = 2.4
-        vmax_mean = 7.8
-        vmin_uncert = 0
-        vmax_uncert = 2.5
+        vmin_mean = None
+        vmax_mean = None
+        vmin_uncert = None
+        vmax_uncert = None
         num_samples = 200
+        cax.cla()
         loop_state_x, model = all_loop_state_xs_and_models[frame]
         model_inputs = get_cached_openweather_data(num_samples**2, climate_variables)
-        print(model_inputs[:, :2].shape)
         ground_truth = get_cached_air_pollution_data(num_samples**2)
 
         mean, uncertainty = model.predict(model_inputs)
 
         coords = model_inputs[:, :2]
         num_samples = math.isqrt(coords.shape[0])
-        print(num_samples)
 
         mean = mean.reshape((num_samples, num_samples))
         uncertainty = uncertainty.reshape((num_samples, num_samples))
@@ -335,8 +374,8 @@ def create_animation(
         observations = loop_state_x[:, :2]
 
         ax1.set_title("Mean PM2.5 Concentrations")
-        ax1.set_ylabel("Longitude")
-        ax1.set_xlabel("Latitude")
+        ax1.set_xlabel("Longitude")
+        ax1.set_ylabel("Latitude")
         if vmin_mean != None and vmax_mean != None:
             cs1 = ax1.contourf(
                 coords[:, 1].reshape((num_samples, num_samples)),
@@ -355,8 +394,8 @@ def create_animation(
         # fig.colorbar(cs1, ax=ax1)
 
         ax2.set_title("Uncertainty in estimation")
-        ax2.set_ylabel("Longitude")
-        ax2.set_xlabel("Latitude")
+        ax2.set_xlabel("Longitude")
+        ax2.set_ylabel("Latitude")
         if vmin_uncert != None and vmax_uncert != None:
             cs2 = ax2.contourf(
                 coords[:, 1].reshape((num_samples, num_samples)),
@@ -371,8 +410,9 @@ def create_animation(
                 coords[:, 0].reshape((num_samples, num_samples)),
                 uncertainty,
             )
+        print(uncertainty.shape)
         ax2.scatter(observations[:, 1], observations[:, 0], c="red", marker="o")
-        # fig.colorbar(cs2, ax=ax2)
+        fig.colorbar(cs2, cax=cax)
         # fig.colorbar(cs2, ax=ax2)  # orientation="vertical")
 
         fig.suptitle("Simple Gaussian Process Model for PM2.5 Concentrations")
@@ -380,13 +420,21 @@ def create_animation(
         # cb2.update_normal(cs2)
         return ax1, ax2
 
+    # fig.suptitle("Gaussian process over time", fontsize=14)
     ani = animation.FuncAnimation(fig=fig, func=update, frames=30, interval=30)
-    fig.suptitle("Gaussian process over time", fontsize=14)
 
     # saving to m4 using ffmpeg writer
     # writervideo = animation.FFMpegWriter(fps=30)
     # ani.save("increasingStraightLine.mp4", writer=writervideo)
+    # f = r"animation.gif"
+    # writergif = animation.PillowWriter(fps=1)
+    # ani.save(f, writer=writergif)
+    f = r"animation.mp4"
+    writervideo = animation.FFMpegWriter(fps=5)
+    ani.save(f, writer=writervideo)
     plt.show()
+
+    pass
 
 
 def process_items(ctx, param, value):
@@ -531,7 +579,7 @@ def run_model(
             acquisition_func,
             climate_variables=climate_variables,
             animation=animation,
-            max_iterations=10,
+            max_iterations=30,
         )
         # plot_uncertainty_over_time(
         #     all_loop_state_xs_and_models,
