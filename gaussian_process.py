@@ -44,6 +44,12 @@ import geopandas as gpd
 import matplotlib.animation as animation
 
 
+import random
+
+np.random.seed(42)
+random.seed(42)
+
+
 def get_model(
     train_x: npt.ArrayLike, train_y: npt.ArrayLike, kernel_name: str = "Matern52"
 ):
@@ -143,12 +149,6 @@ def evaluate_model(
         mean_squared_error(y_true, y_pred),
         mean_squared_error(y_true, y_pred, squared=False),
     )
-    # if metric == "MAE":
-    #     return mean_absolute_error(y_true, y_pred)
-    # if metric == "MSE":
-    #     return mean_squared_error(y_true, y_pred)
-    # if metric == "RMSE":
-    #     return mean_squared_error(y_true, y_pred, squared=False)
 
 
 def plot_results(
@@ -163,16 +163,21 @@ def plot_results(
     vmax_uncert=None,
     animation=False,
 ):
-    fig, (ax1, ax2) = plt.subplots(
-        ncols=2, nrows=1, figsize=(12, 6), constrained_layout=True
-    )
+    if not animation:
+        fig, (ax1, ax2) = plt.subplots(
+            ncols=1, nrows=2, figsize=(12, 6), constrained_layout=True
+        )
+    else:
+        fig, (ax1, ax2) = plt.subplots(
+            ncols=1, nrows=2, figsize=(6, 10), constrained_layout=True
+        )
 
     num_samples = math.isqrt(coords.shape[0])
 
     mean = mean.reshape((num_samples, num_samples))
     uncertainty = uncertainty.reshape((num_samples, num_samples))
 
-    ax1.set_title("Mean PM2.5 Concentrations")
+    ax1.set_title("Mean PM2.5 concentrations")
     ax1.set_xlabel("Longitude")
     ax1.set_ylabel("Latitude")
     if vmin_mean != None and vmax_mean != None:
@@ -211,7 +216,7 @@ def plot_results(
         )
     ax2.scatter(observations[:, 1], observations[:, 0], c="red", marker="o")
     plt.colorbar(cs2, ax=ax2)
-    fig.suptitle("Simple Gaussian Process Model for PM2.5 Concentrations")
+    fig.suptitle("Gaussian process model for PM2.5 concentration estimation")
     fig.savefig(f"{filepath}.png")
     fig.savefig(f"{filepath}.pdf")
     if not animation:
@@ -245,6 +250,10 @@ def process_results(
             observations,
             filepath=filepath,
             animation=animation,
+            vmin_mean=vmin_mean,
+            vmax_mean=vmax_mean,
+            vmin_uncert=vmin_uncert,
+            vmax_uncert=vmax_uncert,
         )
 
     save_to_geojson(coordinates=model_inputs[:, :2], mean=mean, uncertainty=uncertainty)
@@ -258,6 +267,10 @@ def plot_uncertainty_over_time(
     all_loop_state_xs_and_models: Tuple,
     climate_variables: list,
     root_folder: str = "data/uncertainty_over_time",
+    vmin_mean=None,
+    vmax_mean=None,
+    vmin_uncert=None,
+    vmax_uncert=None,
 ):
     for i, (loop_state_x, model) in enumerate(all_loop_state_xs_and_models):
         process_results(
@@ -267,10 +280,10 @@ def plot_uncertainty_over_time(
             climate_variables=climate_variables,
             plot_enabled=True,
             filepath=f"{root_folder}/{i}",
-            vmin_mean=2.4,
-            vmax_mean=7.8,
-            vmin_uncert=0,
-            vmax_uncert=2.5,
+            vmin_mean=vmin_mean,
+            vmax_mean=vmax_mean,
+            vmin_uncert=vmin_uncert,
+            vmax_uncert=vmax_uncert,
             animation=True,
         )
 
@@ -305,16 +318,16 @@ def create_animation(
     all_loop_state_xs_and_models,
     climate_variables,
     root_folder: str = "data/uncertainty_over_time",
+    vmin_mean=None,
+    vmax_mean=None,
+    vmin_uncert=None,
+    vmax_uncert=None,
 ):
     fig, (ax1, ax2) = plt.subplots(
         ncols=2,
         nrows=1,
         figsize=(12, 6),  # constrained_layout=True
     )
-    vmin_mean = None
-    vmax_mean = None
-    vmin_uncert = None
-    vmax_uncert = None
     num_samples = 200
 
     loop_state_x, model = all_loop_state_xs_and_models[0]
@@ -325,8 +338,10 @@ def create_animation(
     ground_truth = get_cached_air_pollution_data(num_samples**2)
 
     mean, uncertainty = model.predict(model_inputs)
-    div = make_axes_locatable(ax2)
-    cax = div.append_axes("right", "3%", "3%")
+    div2 = make_axes_locatable(ax2)
+    div1 = make_axes_locatable(ax1)
+    cax1 = div1.append_axes("right", "3%", "3%")
+    cax2 = div2.append_axes("right", "3%", "3%")
     # data = np.random.rand(5, 5)
     # im = ax1.imshow(data)
     coords = model_inputs[:, :2]
@@ -335,6 +350,7 @@ def create_animation(
     ax2.set_ylabel("Latitude")
     ax2.set_xlabel("Longitude")
     uncertainty = uncertainty.reshape((num_samples, num_samples))
+    mean = mean.reshape((num_samples, num_samples))
     if vmin_uncert != None and vmax_uncert != None:
         cs2 = ax2.contourf(
             coords[:, 1].reshape((num_samples, num_samples)),
@@ -350,15 +366,31 @@ def create_animation(
             uncertainty,
         )
     ax2.scatter(observations[:, 1], observations[:, 0], c="red", marker="o")
-    cb = fig.colorbar(cs2, cax=cax)
+    cb = fig.colorbar(cs2, cax=cax2)
 
-    def update(frame):
-        vmin_mean = None
-        vmax_mean = None
-        vmin_uncert = None
-        vmax_uncert = None
+    ax1.set_title("Mean PM2.5 Concentrations")
+    ax1.set_xlabel("Longitude")
+    ax1.set_ylabel("Latitude")
+    if vmin_mean != None and vmax_mean != None:
+        cs1 = ax1.contourf(
+            coords[:, 1].reshape((num_samples, num_samples)),
+            coords[:, 0].reshape((num_samples, num_samples)),
+            mean,
+            vmin=vmin_mean,
+            vmax=vmax_mean,
+        )
+    else:
+        cs1 = ax1.contourf(
+            coords[:, 1].reshape((num_samples, num_samples)),
+            coords[:, 0].reshape((num_samples, num_samples)),
+            mean,
+        )
+    cb = fig.colorbar(cs1, cax=cax1)
+
+    def update(vmin_mean, vmax_mean, vmin_uncert, vmax_uncert, frame):
         num_samples = 200
-        cax.cla()
+        cax1.cla()
+        cax2.cla()
         loop_state_x, model = all_loop_state_xs_and_models[frame]
         model_inputs = get_cached_openweather_data(num_samples**2, climate_variables)
         ground_truth = get_cached_air_pollution_data(num_samples**2)
@@ -373,7 +405,7 @@ def create_animation(
 
         observations = loop_state_x[:, :2]
 
-        ax1.set_title("Mean PM2.5 Concentrations")
+        ax1.set_title("Mean PM2.5 concentrations over time")
         ax1.set_xlabel("Longitude")
         ax1.set_ylabel("Latitude")
         if vmin_mean != None and vmax_mean != None:
@@ -393,7 +425,7 @@ def create_animation(
         # ax1.scatter(observations[:, 0], observations[:, 1], c="red", marker="o")
         # fig.colorbar(cs1, ax=ax1)
 
-        ax2.set_title("Uncertainty in estimation")
+        ax2.set_title("Uncertainty in estimation over time")
         ax2.set_xlabel("Longitude")
         ax2.set_ylabel("Latitude")
         if vmin_uncert != None and vmax_uncert != None:
@@ -412,16 +444,26 @@ def create_animation(
             )
         print(uncertainty.shape)
         ax2.scatter(observations[:, 1], observations[:, 0], c="red", marker="o")
-        fig.colorbar(cs2, cax=cax)
-        # fig.colorbar(cs2, ax=ax2)  # orientation="vertical")
+        fig.colorbar(cs2, cax=cax2)
+        fig.colorbar(cs1, cax=cax1)
 
-        fig.suptitle("Simple Gaussian Process Model for PM2.5 Concentrations")
-        # cb1.update_normal(cs1)
-        # cb2.update_normal(cs2)
+        # fig.suptitle("Simple Gaussian Process Model for PM2.5 Concentrations")
+        # plt.suptitle(
+        #     "Gaussian process over time for PM2.5 concentraion prediction", fontsize=14
+        # ) #TODO fix suptitle
+
         return ax1, ax2
 
-    # fig.suptitle("Gaussian process over time", fontsize=14)
-    ani = animation.FuncAnimation(fig=fig, func=update, frames=30, interval=30)
+    update_partial = partial(
+        update,
+        vmin_mean,
+        vmax_mean,
+        vmin_uncert,
+        vmax_uncert,
+    )
+
+    ani = animation.FuncAnimation(fig=fig, func=update_partial, frames=30, interval=30)
+    plt.tight_layout()
 
     # saving to m4 using ffmpeg writer
     # writervideo = animation.FFMpegWriter(fps=30)
@@ -429,7 +471,7 @@ def create_animation(
     # f = r"animation.gif"
     # writergif = animation.PillowWriter(fps=1)
     # ani.save(f, writer=writergif)
-    f = r"animation.mp4"
+    f = f"{root_folder}/animation.mp4"
     writervideo = animation.FFMpegWriter(fps=5)
     ani.save(f, writer=writervideo)
     plt.show()
@@ -492,27 +534,7 @@ def run_model(
     if not climate_variables:
         climate_variables = []
 
-    extent_gpd = gpd.read_file("data/extent.geojson")
-
     bounds = {}
-
-    # latitude_bounds = (
-    #     extent_gpd.MINY[
-    #         0
-    #     ],  # 50.866580,  # sample_locations_air_pollution_df.longitude.min(),
-    #     extent_gpd.MAXY[
-    #         0
-    #     ],  # 52.608829,  # sample_locations_air_pollution_df.longitude.max(),
-    # )
-
-    # longitude_bounds = (
-    #     extent_gpd.MINX[
-    #         0
-    #     ],  # -2.173528,  # sample_locations_air_pollution_df.latitude.min(),
-    #     extent_gpd.MAXX[
-    #         0
-    #     ],  # 0.312971,  # sample_locations_air_pollution_df.latitude.max(),
-    # )
 
     latitude_bounds = (50.866580, 52.608829)
     longitude_bounds = (-2.173528, 0.312971)
@@ -571,6 +593,15 @@ def run_model(
         acquisition_func = ModelVariance(model=model)
 
     if animation:
+        vmin_mean = 2
+        vmax_mean = 9
+        vmin_uncert = 0
+        vmax_uncert = 7.2
+
+        # vmin_mean = 0
+        # vmax_mean = 9.0
+        # vmin_uncert = 0
+        # vmax_uncert = 4.0
         output_folder = Path(OUTPUTS_DIR, "uncertainty_over_time")
         output_folder.mkdir(parents=True, exist_ok=True)
         all_loop_state_xs_and_models = run_bayes_optimization(
@@ -581,16 +612,24 @@ def run_model(
             animation=animation,
             max_iterations=30,
         )
-        # plot_uncertainty_over_time(
-        #     all_loop_state_xs_and_models,
-        #     climate_variables,
-        #     root_folder=str(output_folder),
-        # )
 
+        plot_uncertainty_over_time(
+            all_loop_state_xs_and_models,
+            climate_variables,
+            root_folder=str(output_folder),
+            vmin_mean=vmin_mean,
+            vmax_mean=vmax_mean,
+            vmin_uncert=vmin_uncert,
+            vmax_uncert=vmax_uncert,
+        )
         create_animation(
             all_loop_state_xs_and_models,
             climate_variables,
             root_folder=str(output_folder),
+            vmin_mean=vmin_mean,
+            vmax_mean=vmax_mean,
+            vmin_uncert=vmin_uncert,
+            vmax_uncert=vmax_uncert,
         )
 
     results = run_bayes_optimization(
