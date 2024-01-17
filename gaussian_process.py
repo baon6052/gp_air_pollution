@@ -41,6 +41,8 @@ from dataset import (
 import shapely
 import geopandas as gpd
 
+import matplotlib.animation as animation
+
 
 def get_model(
     train_x: npt.ArrayLike, train_y: npt.ArrayLike, kernel_name: str = "Matern52"
@@ -296,6 +298,97 @@ def save_to_geojson(coordinates, mean, uncertainty):
     pass
 
 
+def create_animation(
+    all_loop_state_xs_and_models,
+    climate_variables,
+    root_folder: str = "data/uncertainty_over_time",
+):
+    fig, (ax1, ax2) = plt.subplots(
+        ncols=2, nrows=1, figsize=(12, 6), constrained_layout=True
+    )
+    vmin_mean = 2.4
+    vmax_mean = 7.8
+    vmin_uncert = 0
+    vmax_uncert = 2.5
+    num_samples = 200
+
+    def update(frame):
+        vmin_mean = 2.4
+        vmax_mean = 7.8
+        vmin_uncert = 0
+        vmax_uncert = 2.5
+        num_samples = 200
+        loop_state_x, model = all_loop_state_xs_and_models[frame]
+        model_inputs = get_cached_openweather_data(num_samples**2, climate_variables)
+        print(model_inputs[:, :2].shape)
+        ground_truth = get_cached_air_pollution_data(num_samples**2)
+
+        mean, uncertainty = model.predict(model_inputs)
+
+        coords = model_inputs[:, :2]
+        num_samples = math.isqrt(coords.shape[0])
+        print(num_samples)
+
+        mean = mean.reshape((num_samples, num_samples))
+        uncertainty = uncertainty.reshape((num_samples, num_samples))
+
+        observations = loop_state_x[:, :2]
+
+        ax1.set_title("Mean PM2.5 Concentrations")
+        ax1.set_ylabel("Longitude")
+        ax1.set_xlabel("Latitude")
+        if vmin_mean != None and vmax_mean != None:
+            cs1 = ax1.contourf(
+                coords[:, 1].reshape((num_samples, num_samples)),
+                coords[:, 0].reshape((num_samples, num_samples)),
+                mean,
+                vmin=vmin_mean,
+                vmax=vmax_mean,
+            )
+        else:
+            cs1 = ax1.contourf(
+                coords[:, 1].reshape((num_samples, num_samples)),
+                coords[:, 0].reshape((num_samples, num_samples)),
+                mean,
+            )
+        # ax1.scatter(observations[:, 0], observations[:, 1], c="red", marker="o")
+        # fig.colorbar(cs1, ax=ax1)
+
+        ax2.set_title("Uncertainty in estimation")
+        ax2.set_ylabel("Longitude")
+        ax2.set_xlabel("Latitude")
+        if vmin_uncert != None and vmax_uncert != None:
+            cs2 = ax2.contourf(
+                coords[:, 1].reshape((num_samples, num_samples)),
+                coords[:, 0].reshape((num_samples, num_samples)),
+                uncertainty,
+                vmin=vmin_uncert,
+                vmax=vmax_uncert,
+            )
+        else:
+            cs2 = ax2.contourf(
+                coords[:, 1].reshape((num_samples, num_samples)),
+                coords[:, 0].reshape((num_samples, num_samples)),
+                uncertainty,
+            )
+        ax2.scatter(observations[:, 1], observations[:, 0], c="red", marker="o")
+        # fig.colorbar(cs2, ax=ax2)
+        # fig.colorbar(cs2, ax=ax2)  # orientation="vertical")
+
+        fig.suptitle("Simple Gaussian Process Model for PM2.5 Concentrations")
+        # cb1.update_normal(cs1)
+        # cb2.update_normal(cs2)
+        return ax1, ax2
+
+    ani = animation.FuncAnimation(fig=fig, func=update, frames=30, interval=30)
+    fig.suptitle("Gaussian process over time", fontsize=14)
+
+    # saving to m4 using ffmpeg writer
+    # writervideo = animation.FFMpegWriter(fps=30)
+    # ani.save("increasingStraightLine.mp4", writer=writervideo)
+    plt.show()
+
+
 def process_items(ctx, param, value):
     if value:
         items = value.split(",")
@@ -438,27 +531,27 @@ def run_model(
             acquisition_func,
             climate_variables=climate_variables,
             animation=animation,
+            max_iterations=10,
         )
-        plot_uncertainty_over_time(
-            all_loop_state_xs_and_models,
-            climate_variables,
-            root_folder=str(output_folder),
-        )
-
-        # create_animation(
+        # plot_uncertainty_over_time(
         #     all_loop_state_xs_and_models,
         #     climate_variables,
         #     root_folder=str(output_folder),
         # )
 
-    else:
-        results = run_bayes_optimization(
-            model,
-            parameter_space,
-            acquisition_func,
-            climate_variables=climate_variables,
-            max_iterations=30,
+        create_animation(
+            all_loop_state_xs_and_models,
+            climate_variables,
+            root_folder=str(output_folder),
         )
+
+    results = run_bayes_optimization(
+        model,
+        parameter_space,
+        acquisition_func,
+        climate_variables=climate_variables,
+        max_iterations=30,
+    )
     mae, mse, rmse = process_results(
         model,
         model.X[:, :2],
