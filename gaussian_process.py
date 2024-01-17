@@ -84,9 +84,7 @@ def get_parameter_space(
         for name, (min_bound, max_bound) in input_bounds.items()
     ]
 
-    constant_spaces = [
-        DiscreteParameter(name, [1]) for name in climate_variables
-    ]
+    constant_spaces = [DiscreteParameter(name, [1]) for name in climate_variables]
     parameter_spaces.extend(constant_spaces)
 
     return ParameterSpace(parameter_spaces)
@@ -196,9 +194,7 @@ def process_results(
         high_fidelity_column_and_values = np.array(
             [[0] for _ in range(model_inputs.shape[0])]
         )
-        model_inputs = np.append(
-            model_inputs, high_fidelity_column_and_values, axis=1
-        )
+        model_inputs = np.append(model_inputs, high_fidelity_column_and_values, axis=1)
 
     mean, uncertainty = model.predict(model_inputs)
 
@@ -206,9 +202,7 @@ def process_results(
     if plot_enabled:
         plot_results(mean, uncertainty, model_inputs[:, :2], observations)
 
-    save_to_geojson(
-        coordinates=model_inputs[:, :2], mean=mean, uncertainty=uncertainty
-    )
+    save_to_geojson(coordinates=model_inputs[:, :2], mean=mean, uncertainty=uncertainty)
 
     # evaluate model performance
     mae, mse, rmse = evaluate_model(mean, ground_truth)
@@ -323,9 +317,7 @@ def run_model(
             longitude_bounds[0],
             longitude_bounds[1],
         )
-        xx, yy = np.meshgrid(
-            np.linspace(xmin, xmax, 200), np.linspace(ymin, ymax, 200)
-        )
+        xx, yy = np.meshgrid(np.linspace(xmin, xmax, 200), np.linspace(ymin, ymax, 200))
         xc = xx.flatten()
         yc = yy.flatten()
         coordinates = list(zip(xc, yc))
@@ -360,9 +352,7 @@ def run_model(
 
     model = get_model(train_x=train_x, train_y=train_y, kernel_name=kernel_name)
 
-    parameter_space = get_parameter_space(
-        bounds, climate_variables=climate_variables
-    )
+    parameter_space = get_parameter_space(bounds, climate_variables=climate_variables)
 
     if acquisition_function == "IVR":
         acquisition_func = IntegratedVarianceReduction(
