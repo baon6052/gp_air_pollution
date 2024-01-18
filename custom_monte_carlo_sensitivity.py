@@ -16,7 +16,9 @@ class CustomModelFreeMonteCarloSensitivity(ModelFreeMonteCarloSensitivity):
     of interest.
     """
 
-    def __init__(self, objective: Callable, input_domain: ParameterSpace) -> None:
+    def __init__(
+        self, objective: Callable, input_domain: ParameterSpace
+    ) -> None:
         """
         :param objective: python function in which the sensitivity analysis will be performed.
         :param input_domain: parameter space.
@@ -27,8 +29,9 @@ class CustomModelFreeMonteCarloSensitivity(ModelFreeMonteCarloSensitivity):
         super().__init__(objective, input_domain)
 
     def _generate_samples(
-            self, num_monte_carlo_points: int = int(1e5),
-            climate_variables: list[str] = []
+        self,
+        num_monte_carlo_points: int = int(1e5),
+        climate_variables: list[str] = [],
     ) -> None:
         """
         Generates the two samples that are used to compute the main and total indices
@@ -37,7 +40,7 @@ class CustomModelFreeMonteCarloSensitivity(ModelFreeMonteCarloSensitivity):
         """
         # self.main_sample = self.input_domain.sample_uniform(num_monte_carlo_points)
 
-        data = get_cached_openweather_data(
+        data, _ = get_cached_openweather_data(
             num_monte_carlo_points, climate_variables
         )
         # self.main_sample = get_cached_openweather_data(
@@ -83,11 +86,11 @@ class CustomModelFreeMonteCarloSensitivity(ModelFreeMonteCarloSensitivity):
     #     return sample.mean(), sample.var()
     #
     def compute_effects(
-            self,
-            main_sample: np.ndarray = None,
-            fixing_sample: np.ndarray = None,
-            num_monte_carlo_points: int = int(1e5),
-            climate_variables: list[str] = [],
+        self,
+        main_sample: np.ndarray = None,
+        fixing_sample: np.ndarray = None,
+        num_monte_carlo_points: int = int(1e5),
+        climate_variables: list[str] = [],
     ) -> tuple:
         """
         Computes the main and total effects using Monte Carlo and a give number of samples.
@@ -107,7 +110,9 @@ class CustomModelFreeMonteCarloSensitivity(ModelFreeMonteCarloSensitivity):
         """
         if main_sample is None or fixing_sample is None:
             self.num_monte_carlo_points = num_monte_carlo_points
-            self._generate_samples(self.num_monte_carlo_points, climate_variables)
+            self._generate_samples(
+                self.num_monte_carlo_points, climate_variables
+            )
         else:
             self.main_sample = main_sample
             self.fixing_sample = fixing_sample
@@ -117,7 +122,7 @@ class CustomModelFreeMonteCarloSensitivity(ModelFreeMonteCarloSensitivity):
         f_fixing_sample = self.objective.f(self.fixing_sample)
 
         total_mean, total_variance = self.compute_statistics(f_main_sample)
-        variable_names = ['longitude', 'latitude']
+        variable_names = ["longitude", "latitude"]
         variable_names.extend(climate_variables)
 
         main_effects = {}
@@ -127,13 +132,18 @@ class CustomModelFreeMonteCarloSensitivity(ModelFreeMonteCarloSensitivity):
         for variable in variable_names:
             # --- All columns are the same but the one of interest that is replaced by the original sample
             self.new_fixing_sample = self.fixing_sample.copy()
-            self.new_fixing_sample[:, var_index] = self.main_sample[:, var_index]
+            self.new_fixing_sample[:, var_index] = self.main_sample[
+                :, var_index
+            ]
 
             # --- Evaluate the objective at the new fixing sample
             f_new_fixing_sample = self.objective.f(self.new_fixing_sample)
 
             # --- Compute the main and total variances
-            variable_main_variance, variable_total_variance = self.saltelli_estimators(
+            (
+                variable_main_variance,
+                variable_total_variance,
+            ) = self.saltelli_estimators(
                 f_main_sample,
                 f_fixing_sample,
                 f_new_fixing_sample,

@@ -1,10 +1,10 @@
 from pathlib import Path
 
-from gaussian_process import main, run_model
-from dataset import OUTPUTS_DIR
 import numpy as np
 import pandas as pd
 
+from dataset import OUTPUTS_DIR
+from gaussian_process import main, run_model
 
 climate_variables = [
     "feels_like",
