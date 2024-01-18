@@ -11,10 +11,6 @@ kernel = "Exponential"
 
 noise_multipliers = [0.1, 0.5, 1.0, 1.5]
 
-# high_fidelity_percentages = [5, 10, 20, 50, 100]
-# num_low_fidelity_samples = [50, 150, 200, 400]
-
-
 num_high_fidelity_samples = [1, 10, 20, 50, 100, 150, 200, 400]
 num_low_fidelity_samples = [1, 10, 20, 50, 100, 150, 200, 400]
 

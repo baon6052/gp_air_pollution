@@ -1,5 +1,3 @@
-# from emukit.experimental_design.model_free.random_design import RandomDesign
-# from emukit.sensitivity.monte_carlo import MonteCarloSensitivity
 import pandas as pd
 
 from custom_monte_carlo_sensitivity import CustomMonteCarloSensitivity

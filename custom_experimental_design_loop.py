@@ -91,10 +91,6 @@ class CustomExperimentalDesignLoop(OuterLoop):
             candidate_point_calculator = CustomSequentialPointCalculator(
                 acquisition, acquisition_optimizer, climate_variables
             )
-        # elif batch_size > 1:
-        #     candidate_point_calculator = GreedyBatchPointCalculator(
-        #         model, acquisition, acquisition_optimizer, batch_size
-        #     )
         else:
             raise ValueError(
                 "Batch size value of " + str(batch_size) + " is invalid."
