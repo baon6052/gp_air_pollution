@@ -5,9 +5,7 @@ import numpy as np
 import pandas as pd
 
 from dataset import OUTPUTS_DIR
-
 from multifidelity_analysis import run_multifidelity_analysis
-
 
 kernel = "Exponential"
 

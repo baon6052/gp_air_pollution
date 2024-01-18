@@ -70,8 +70,12 @@ def get_datasets(
         climate_variables=climate_variables,
         shuffle_coordinates=True,
     )
-    coordinates = [(latitude, longitude) for latitude, longitude in model_inputs[:, :2]]
-    coordinates = [tuple(np.float64(coord) for coord in pair) for pair in coordinates]
+    coordinates = [
+        (latitude, longitude) for latitude, longitude in model_inputs[:, :2]
+    ]
+    coordinates = [
+        tuple(np.float64(coord) for coord in pair) for pair in coordinates
+    ]
 
     ground_truth = get_cached_air_pollution_data(
         num_samples=dataset_size, coordinates=coordinates
@@ -101,8 +105,12 @@ def get_datasets(
         )
     )[:num_values_high_fidelity]
 
-    x_high_fidelity = np.array([item[0] for item in high_fidelity_dataset[:, :1]])
-    y_high_fidelity = np.array([item[0] for item in high_fidelity_dataset[:, 1:]])
+    x_high_fidelity = np.array(
+        [item[0] for item in high_fidelity_dataset[:, :1]]
+    )
+    y_high_fidelity = np.array(
+        [item[0] for item in high_fidelity_dataset[:, 1:]]
+    )
 
     X_train, Y_train = convert_xy_lists_to_arrays(
         [x_high_fidelity, x_low_fidelity], [y_high_fidelity, y_low_fidelity]
